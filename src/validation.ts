@@ -34,7 +34,13 @@ export const profileInputSchema = z.object({
     .max(50, "Title max 50 characters")
     .regex(/^[A-Za-z0-9 _\-.,'’()&!]+$/, "Title contains unsupported characters"),
 
-  ratio: z.coerce.number().min(14, "Ratio must be ≥ 14 (1:14)").max(20, "Ratio must be ≤ 20 (1:20)"),
+  // Fellow's app clamps ratio to 14–20, but that's client-side only: the API
+  // enforces no ratio bounds at all (verified live 2026-06-11 — POST accepted
+  // 12, PATCH accepted 0.5 through 50, all echoed and persisted; Fellow's own
+  // Brew Talks blog shares a 1:11 profile). We allow down to 1:8 so flash brew
+  // can set the true hot-concentrate ratio; below ~1:8 the bed risks stalling
+  // with a fine grind, and above 1:20 there's no brewing use case.
+  ratio: z.coerce.number().min(8, "Ratio must be ≥ 8 (1:8)").max(20, "Ratio must be ≤ 20 (1:20)"),
 
   bloomEnabled: boolish.default(true),
   bloomRatio: z.coerce.number().min(1).max(3),

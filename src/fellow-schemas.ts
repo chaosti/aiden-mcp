@@ -138,7 +138,7 @@ const temp = z.number().min(50).max(99); // °C — a °F migration lands at 122
 export const customProfileSchema = z.object({
   id: z.string().regex(/^p\d+$/),
   title: z.string(),
-  ratio: z.number().min(14).max(20),
+  ratio: z.number().min(8).max(20), // mirrors validation.ts floor (flash brew)
   bloomEnabled: bool,
   bloomRatio: z.number().min(1).max(3),
   bloomDuration: z.number().min(1).max(120),

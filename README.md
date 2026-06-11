@@ -136,7 +136,7 @@ The Aiden brewer accepts profiles with these constraints:
 
 | Field | Range | Notes |
 |---|---|---|
-| `ratio` | 14–20 | Coffee:water ratio (e.g. 15 = 1:15) |
+| `ratio` | 8–20 | Coffee:water ratio (e.g. 15 = 1:15). The Fellow app's editor stops at 14, but the API and device accept lower — used by `flash_brew` for honest hot-concentrate profiles |
 | `bloomRatio` | 1–3 | Water multiple for the bloom |
 | `bloomDuration` | 1–120 | Seconds |
 | `bloomTemperature` | 50–99 | °C |

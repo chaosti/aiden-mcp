@@ -34,7 +34,7 @@ import { handleAuthorizeGet, handleAuthorizePost } from "./oauth/authorize.js";
 import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 
-const VERSION = "0.5.3";
+const VERSION = "0.6.0";
 
 function makeServer(headers: Headers, env: Env): McpServer {
   const server = new McpServer({
@@ -151,7 +151,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
         .min(1)
         .describe("Profile id (e.g. 'p1') or exact case-sensitive title (e.g. 'Mpemba v3')"),
       title: z.string().min(1).max(50).optional().describe("New title (optional)"),
-      ratio: z.coerce.number().min(14).max(20).optional(),
+      ratio: z.coerce.number().min(8).max(20).optional(),
       bloomEnabled: z.coerce.boolean().optional(),
       bloomRatio: z.coerce.number().min(1).max(3).optional(),
       bloomDuration: z.coerce.number().int().min(1).max(120).optional(),
@@ -407,17 +407,17 @@ function makeServer(headers: Headers, env: Env): McpServer {
   );
 
   // ============================================================
-  // flash_brew — Japanese iced coffee calculator (dose-trick math)
+  // flash_brew — Japanese iced coffee calculator
   // ============================================================
   server.tool(
     "flash_brew",
-    "Plan a flash brew (Japanese iced coffee) on the Aiden: a hot, concentrated brew directly onto ice in the carafe. The Aiden's 1:14-1:20 ratio range can't express the 1:9-1:12 hot concentrate flash brew needs, so this computes the standard workaround: what brew volume to dial in, what dose the machine will DISPLAY, and what to ACTUALLY add. Returns the ice/water split, real vs displayed dose, grind adjustment, and technique steps. Pure math, no Aiden auth. Use brewing_guidelines first for the coffee's profile temps.",
+    "Plan a flash brew (Japanese iced coffee) on the Aiden: a hot, concentrated brew directly onto ice in the carafe. The default plan is honest: it sets the profile ratio to the true 1:9-1:12 hot-concentrate ratio (Fellow's API accepts ratios below the app's 1:14 minimum), so the machine's displayed dose and bloom sizing are simply correct. Returns the ice/water split, profile ratio to set, dose, grind adjustment, and technique steps. Pass machine_profile_ratio ONLY to brew with an existing 1:14+ profile unchanged — that returns the classic dose-misreport workaround instead. Pure math, no Aiden auth. Use brewing_guidelines first for the coffee's profile temps.",
     {
       dose_g: z.coerce.number().min(10).max(120).optional().describe("Coffee the user wants to use, in grams. Provide this OR target_volume_ml."),
       target_volume_ml: z.coerce.number().min(150).max(2000).optional().describe("Final drink size in ml (ice melt included). Used to derive the dose if dose_g not given."),
       total_ratio: z.coerce.number().min(10).max(20).optional().describe("True ratio including ice melt. Default 15 (Counter Culture uses 17, Lance Hedrick 12 — lower = stronger)."),
       ice_fraction: z.coerce.number().min(0.1).max(0.5).optional().describe("Share of total liquid that is ice in the carafe. Default 0.3; published recipes use 0.25-0.33."),
-      machine_profile_ratio: z.coerce.number().min(14).max(20).optional().describe("The ratio of the profile they'll brew with (default 16) — used to predict the dose the machine will display."),
+      machine_profile_ratio: z.coerce.number().min(8).max(20).optional().describe("Only set this to brew with an existing profile whose ratio stays as-is — the plan becomes the dose-misreport workaround for that ratio. Omit it (default) for the honest plan, where the profile ratio is set to the true hot-concentrate ratio."),
       grinder: z.string().optional().describe("User's grinder, to convert the flash-brew grind setting to their dial."),
     },
     async (input) => {
