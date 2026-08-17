@@ -34,7 +34,7 @@ import { handleAuthorizeGet, handleAuthorizePost } from "./oauth/authorize.js";
 import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 
-const VERSION = "0.6.1";
+const VERSION = "0.6.2";
 
 /**
  * @param seed  Client already built by the /mcp pre-flight auth check. Reusing
@@ -740,6 +740,34 @@ export default {
 
       // ---- MCP resource endpoint ----
       if (pathname === "/mcp" || pathname === "/sse") {
+        // This transport is stateless (sessionIdGenerator: undefined) and answers
+        // in plain JSON (enableJsonResponse: true), so it has no standalone SSE
+        // stream to hand out. Handing it a GET makes handleRequest hang forever
+        // instead of replying: the Workers runtime eventually kills the request,
+        // the client reads that as a dropped stream and immediately reconnects,
+        // and the retry loop runs ~2 req/s indefinitely. One stuck Node client
+        // did that from 2026-08-16 19:00 onward and burned ~165k requests in a
+        // day, blowing the 100k/day account limit.
+        //
+        // The MCP spec says a server that does not offer a stream here MUST
+        // answer 405, which is what stops a conforming client from retrying.
+        if (request.method !== "POST") {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              error: {
+                code: -32000,
+                message: "Method Not Allowed: this endpoint accepts POST only (no SSE stream)",
+              },
+              id: null,
+            }),
+            {
+              status: 405,
+              headers: { "Content-Type": "application/json", Allow: "POST" },
+            },
+          );
+        }
+
         // Tools split by whether they need Fellow credentials.
         // Pure-compute / pure-fetch tools work for anyone — no Fellow account needed.
         const FELLOW_AUTH_TOOLS = new Set([
