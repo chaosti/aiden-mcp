@@ -17,7 +17,15 @@ const tempSchema = z.coerce
   .min(50, "Temperature must be ≥ 50°C")
   .max(99, "Temperature must be ≤ 99°C");
 
-const boolish = z.preprocess(
+/**
+ * Boolean that survives string-form input.
+ *
+ * z.coerce.boolean() is NOT safe here: it is Boolean(v), so the strings
+ * "false" and "0" both coerce to TRUE. MCP clients routinely normalize
+ * scalars to strings, so a literal `enabled: "false"` would silently flip
+ * to enabled. Every boolean in this server must use this, not z.coerce.
+ */
+export const boolish = z.preprocess(
   (v) => (typeof v === "string" ? v.toLowerCase() !== "false" && v !== "0" && v !== "" : v),
   z.boolean(),
 );
