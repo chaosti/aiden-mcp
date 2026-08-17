@@ -1,0 +1,54 @@
+# Manual deploy to Cloudflare Workers.
+#
+# Exists because `wrangler login` needs a browser callback to localhost, which
+# a headless box (ravelab) can't satisfy. This runs the deploy on a GitHub
+# runner using an API token instead, so it needs no terminal OAuth at all.
+#
+# Trigger: Actions tab -> "Deploy to Cloudflare Workers" -> "Run workflow".
+# Deliberately workflow_dispatch only: pushing to main never auto-deploys.
+#
+# Requires repo secret CLOUDFLARE_API_TOKEN (Settings -> Secrets and variables
+# -> Actions). Create the token at Cloudflare -> My Profile -> API Tokens with
+# the "Edit Cloudflare Workers" template. Until that secret exists this
+# workflow is inert.
+
+name: Deploy to Cloudflare Workers
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA to deploy"
+        required: false
+        default: main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Fail before shipping rather than after.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Deploy
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Report live version
+        run: |
+          sleep 5
+          echo "Live version:"
+          curl -sS --retry 3 --retry-delay 3 https://aidenmcp.ravenhoward.org/health \
+            | grep -o '"version":"[^"]*"'
