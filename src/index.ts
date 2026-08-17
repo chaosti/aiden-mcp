@@ -17,8 +17,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 
 import { clientFromHeaders, NoCredentialsError, ExpiredTokenError } from "./auth.js";
-import { profileInputSchema, checkPulseConsistency } from "./validation.js";
-import { FellowApiError, categorize, CUSTOM_PROFILE_CAP } from "./fellow-api.js";
+import { profileInputSchema, checkPulseConsistency, boolish } from "./validation.js";
+import { FellowApiError, FellowClient, categorize, CUSTOM_PROFILE_CAP } from "./fellow-api.js";
 import { diffProfileEcho } from "./fellow-schemas.js";
 import { fetchCoffeeDetails } from "./coffee-fetcher.js";
 import { brewingGuidelines } from "./brewing-guidelines.js";
@@ -34,13 +34,25 @@ import { handleAuthorizeGet, handleAuthorizePost } from "./oauth/authorize.js";
 import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
-function makeServer(headers: Headers, env: Env): McpServer {
+/**
+ * @param seed  Client already built by the /mcp pre-flight auth check. Reusing
+ *              it means one Fellow /auth/login (or one KV read) per request
+ *              instead of two, and lets the device-id cache inside the client
+ *              survive across the calls a single tool makes.
+ */
+function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null): McpServer {
   const server = new McpServer({
     name: "aiden-mcp",
     version: VERSION,
   });
+
+  // One authenticated client per request, created on first use. Tools must
+  // call this rather than clientFromHeaders directly.
+  let clientPromise: Promise<FellowClient> | null = seed ? Promise.resolve(seed) : null;
+  const getClient = (): Promise<FellowClient> =>
+    (clientPromise ??= clientFromHeaders(headers, env));
 
   // ============================================================
   // list_profiles
@@ -50,7 +62,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
     "List all brew profiles currently on your Fellow Aiden, grouped by category (custom, stock, shared). The 14-profile cap applies only to user-created custom profiles.",
     {},
     async () => {
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       const device = await client.getDevice();
       const profiles = await client.listProfiles();
 
@@ -111,8 +123,44 @@ function makeServer(headers: Headers, env: Env): McpServer {
         };
       }
 
-      const client = await clientFromHeaders(headers, env);
-      const created = await client.createProfile(parsed);
+      const client = await getClient();
+      let created;
+      try {
+        created = await client.createProfile(parsed);
+      } catch (err) {
+        // The 14-slot cap is the single most common create failure. A bare
+        // "you're full" costs the caller a whole design cycle to recover
+        // from, so name the profiles worth deleting instead — least recently
+        // used first, which is the choice the user would make anyway.
+        if (err instanceof FellowApiError && /maximum number of profiles|14-profile cap/i.test(err.message)) {
+          const candidates = (await client.listProfiles())
+            .filter((p) => categorize(p) === "custom")
+            .map((p) => p as typeof p & { lastUsedTime?: number | null })
+            .sort((a, b) => (a.lastUsedTime ?? 0) - (b.lastUsedTime ?? 0))
+            .slice(0, 5)
+            .map((p) => {
+              const used = p.lastUsedTime
+                ? `last brewed ${new Date(p.lastUsedTime * 1000).toISOString().slice(0, 10)}`
+                : "never brewed";
+              return `  ${p.id}  ${p.title}  (${used})`;
+            });
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text:
+                  `Aiden is at its ${CUSTOM_PROFILE_CAP}-profile cap, so "${parsed.title}" was not created.\n` +
+                  `Free a slot with delete_profile, then retry this exact create_profile call.\n\n` +
+                  `Least-recently-used custom profiles (safest to delete first):\n` +
+                  candidates.join("\n") +
+                  `\n\nAsk the user which to delete — do not delete one on your own.`,
+              },
+            ],
+          };
+        }
+        throw err;
+      }
 
       // Verify Fellow saved what we sent. The API is undocumented — if a
       // field gets renamed/dropped server-side, the create still returns an
@@ -152,17 +200,17 @@ function makeServer(headers: Headers, env: Env): McpServer {
         .describe("Profile id (e.g. 'p1') or exact case-sensitive title (e.g. 'Mpemba v3')"),
       title: z.string().min(1).max(50).optional().describe("New title (optional)"),
       ratio: z.coerce.number().min(8).max(20).optional(),
-      bloomEnabled: z.coerce.boolean().optional(),
+      bloomEnabled: boolish.optional(),
       bloomRatio: z.coerce.number().min(1).max(3).optional(),
       bloomDuration: z.coerce.number().int().min(1).max(120).optional(),
       bloomTemperature: z.coerce.number().min(50).max(99).optional(),
-      ssPulsesEnabled: z.coerce.boolean().optional(),
+      ssPulsesEnabled: boolish.optional(),
       ssPulsesNumber: z.coerce.number().int().min(1).max(10).optional(),
       ssPulsesInterval: z.coerce.number().int().min(5).max(60).optional(),
       ssPulseTemperatures: z
         .preprocess((v) => (typeof v === "string" ? JSON.parse(v) : v), z.array(z.coerce.number().min(50).max(99)))
         .optional(),
-      batchPulsesEnabled: z.coerce.boolean().optional(),
+      batchPulsesEnabled: boolish.optional(),
       batchPulsesNumber: z.coerce.number().int().min(1).max(10).optional(),
       batchPulsesInterval: z.coerce.number().int().min(5).max(60).optional(),
       batchPulseTemperatures: z
@@ -171,7 +219,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
     },
     async (input) => {
       const { idOrTitle, ...changes } = input;
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       const existing = await client.findProfile(idOrTitle);
       if (!existing) {
         return {
@@ -247,7 +295,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
         .describe("Either the profile id (e.g. 'p10') or the exact case-sensitive title"),
     },
     async ({ idOrTitle }) => {
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       const profile = await client.findProfile(idOrTitle);
       if (!profile) {
         return {
@@ -280,7 +328,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
         .describe("Profile id (e.g. 'p10') or exact case-sensitive title"),
     },
     async ({ idOrTitle }) => {
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       const profile = await client.findProfile(idOrTitle);
       if (!profile) {
         return {
@@ -435,10 +483,16 @@ function makeServer(headers: Headers, env: Env): McpServer {
   // ============================================================
   server.tool(
     "list_schedules",
-    "List all scheduled brews on your Aiden, including the raw JSON. Each schedule has a recurrence pattern (which days of the week), a time of day, a profile to brew, and a water amount. Schedules can be enabled/disabled individually. Raw JSON helps diagnose any non-standard fields the device or iOS app may set (e.g. one-shot markers).",
-    {},
-    async () => {
-      const client = await clientFromHeaders(headers, env);
+    "List all scheduled brews on your Aiden. Each schedule has a recurrence pattern (which days of the week), a time of day, a profile to brew, and a water amount. Schedules can be enabled/disabled individually.",
+    {
+      include_raw: boolish
+        .default(false)
+        .describe(
+          "Include the raw schedule JSON from Fellow. Off by default because it is very large (it embeds a full copy of each schedule's profile). Turn on only when diagnosing non-standard fields.",
+        ),
+    },
+    async ({ include_raw }) => {
+      const client = await getClient();
       const schedules = (await client.listSchedules()) as unknown as Array<Record<string, unknown>>;
       if (!schedules.length) {
         return { content: [{ type: "text", text: "No scheduled brews on this Aiden." }] };
@@ -454,20 +508,39 @@ function makeServer(headers: Headers, env: Env): McpServer {
         const mm = Math.floor((sec % 3600) / 60);
         const time = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
         const status = s.enabled ? "enabled" : "disabled";
-        return `  ${s.id ?? "(no id)"}  ${days || "no days"}  ${time}  ${s.amountOfWater}mL  profile:${s.profileId}  [${status}]`;
+        // A schedule with no days set can never fire — call that out rather
+        // than printing a blank column the model has to interpret.
+        const when = days || "NEVER FIRES (no days set)";
+        return `  ${s.id ?? "(no id)"}  ${when}  ${time}  ${s.amountOfWater}mL  profile:${s.profileId}  [${status}]`;
       };
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              `Schedules (${schedules.length}, device local time):\n` +
-              schedules.map(fmt).join("\n") +
-              "\n\nRaw JSON (useful for spotting non-standard fields like one-shot markers):\n" +
-              JSON.stringify(schedules, null, 2),
-          },
-        ],
-      };
+
+      const lines = [
+        `Schedules (${schedules.length}, device local time):`,
+        ...schedules.map(fmt),
+      ];
+
+      const inert = schedules.filter((s) => !(s.days as boolean[] | undefined)?.some(Boolean));
+      if (inert.length) {
+        lines.push(
+          "",
+          `Note: ${inert.length} schedule(s) have no days set and can never fire. ` +
+            `They occupy the list but do nothing — delete_schedule will clear them.`,
+        );
+      }
+
+      if (include_raw) {
+        // Fellow embeds a full copy of the profile in every schedule, which
+        // dwarfs the useful fields and repeats for schedules sharing a
+        // profile. Drop it — profile details belong to list_profiles.
+        const trimmed = schedules.map(({ profile, ...rest }) => rest);
+        lines.push(
+          "",
+          "Raw JSON (nested `profile` copies stripped — see list_profiles for those):",
+          JSON.stringify(trimmed, null, 2),
+        );
+      }
+
+      return { content: [{ type: "text", text: lines.join("\n") }] };
     },
   );
 
@@ -487,8 +560,12 @@ function makeServer(headers: Headers, env: Env): McpServer {
         .regex(/^([01]?\d|2[0-3]):[0-5]\d$/, "time must be 24-hour HH:MM, e.g. '07:30' or '14:00'")
         .describe("Local time of day in 24-hour HH:MM format, e.g. '07:00' for 7am, '14:00' for 2pm"),
       days: z
-        .array(z.coerce.boolean())
+        .array(boolish)
         .length(7, "days must have exactly 7 entries [Sun, Mon, Tue, Wed, Thu, Fri, Sat]")
+        .refine((d) => d.some(Boolean), {
+          message:
+            "At least one day must be true — a schedule with no days enabled can never fire.",
+        })
         .describe(
           "7 booleans for [Sun, Mon, Tue, Wed, Thu, Fri, Sat]. e.g. [false,true,true,true,true,true,false] = weekdays only.",
         ),
@@ -498,12 +575,12 @@ function makeServer(headers: Headers, env: Env): McpServer {
         .min(150, "minimum 150 mL")
         .max(1500, "maximum 1500 mL")
         .describe("Brew volume in milliliters, 150–1500. A standard cup is ~240mL, full carafe is ~1000mL."),
-      enabled: z.coerce.boolean().default(true).describe("Whether the schedule starts active. Default: true."),
+      enabled: boolish.default(true).describe("Whether the schedule starts active. Default: true."),
     },
     async ({ profileId, time, days, amountOfWater, enabled }) => {
       const [hh, mm] = time.split(":").map(Number);
       const secondFromStartOfTheDay = hh * 3600 + mm * 60;
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       const created = await client.createSchedule({
         profileId,
         secondFromStartOfTheDay,
@@ -545,7 +622,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
       scheduleId: z.string().min(1).describe("Schedule id from list_schedules"),
     },
     async ({ scheduleId }) => {
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       await client.deleteSchedule(scheduleId);
       return { content: [{ type: "text", text: `Deleted schedule ${scheduleId}.` }] };
     },
@@ -559,10 +636,10 @@ function makeServer(headers: Headers, env: Env): McpServer {
     "Enable or disable an existing scheduled brew without deleting it. Useful for pausing a recurring schedule (e.g. weekday morning brew) during vacation.",
     {
       scheduleId: z.string().min(1).describe("Schedule id from list_schedules"),
-      enabled: z.coerce.boolean().describe("true to activate the schedule, false to pause it"),
+      enabled: boolish.describe("true to activate the schedule, false to pause it"),
     },
     async ({ scheduleId, enabled }) => {
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       await client.toggleSchedule(scheduleId, enabled);
       return {
         content: [
@@ -580,7 +657,7 @@ function makeServer(headers: Headers, env: Env): McpServer {
     "Get info about your connected Aiden brewer (name, profile count, slot usage). Lightweight call useful for verifying credentials work before doing heavier operations.",
     {},
     async () => {
-      const client = await clientFromHeaders(headers, env);
+      const client = await getClient();
       const device = await client.getDevice();
       const profiles = await client.listProfiles();
       const customCount = profiles.filter((p) => categorize(p) === "custom").length;
@@ -693,9 +770,11 @@ export default {
           }
         }
 
+        // Reused by makeServer so the request authenticates once, not twice.
+        let seededClient: FellowClient | null = null;
         if (needsAuth) {
           try {
-            await clientFromHeaders(request.headers, env);
+            seededClient = await clientFromHeaders(request.headers, env);
           } catch (err) {
             // Both "no credentials" and "expired/invalid token" return HTTP 401
             // with WWW-Authenticate. This is what makes Claude attempt its
@@ -726,7 +805,7 @@ export default {
           sessionIdGenerator: undefined,
           enableJsonResponse: true,
         });
-        const server = makeServer(request.headers, env);
+        const server = makeServer(request.headers, env, seededClient);
         await server.connect(transport);
         return await transport.handleRequest(request);
       }
