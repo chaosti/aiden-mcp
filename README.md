@@ -1,6 +1,6 @@
 # aiden-mcp
 
-An MCP server for the [Fellow Aiden](https://fellowproducts.com/products/aiden) coffee brewer. Lets Claude (and other MCP clients) brew good coffee with you — list, create, delete, and share profiles on your Aiden through natural language, scrape coffee details from any roaster's product page, and apply Aiden-specific brewing heuristics to design a recipe.
+An MCP server for the [Fellow Aiden](https://fellowproducts.com/products/aiden) coffee brewer. Lets Claude (and other MCP clients) brew good coffee with you — list, create, update, delete, and share profiles on your Aiden through natural language, schedule brews, scrape coffee details from any roaster's product page, and apply Aiden-specific brewing heuristics to design a recipe.
 
 > **Unofficial.** Not affiliated with or endorsed by Fellow Industries. Uses the same private API the Fellow iOS app uses; could break without notice.
 
@@ -9,12 +9,17 @@ An MCP server for the [Fellow Aiden](https://fellowproducts.com/products/aiden) 
 | Tool | Auth | What |
 |---|---|---|
 | `fetch_coffee_details` | none | Scrape any Shopify roaster product page — Counter Culture, Onyx, Sey, Heart, Verve — and return structured data (varieties, process, elevation, notes, story) |
-| `flash_brew` | none | Plan a Japanese iced coffee on the Aiden — computes the ice/water split and the dose workaround (the machine can't express a 1:9 concentrate, so you under-report the dose), grounded in the Counter Culture and Lance Hedrick flash brew recipes |
-| `brewing_guidelines` | none | Return Aiden-specific brewing principles tailored to a coffee's roast, process, elevation, varietals, and your flavor goal. Temperature priors are derived from [69 Fellow Drops profiles](data/README.md), not folk wisdom. Supports basket mods (V60/Orea/Kalita drop-ins adjust grind and pulse pacing). Grind settings convert to your grinder (Encore, Encore ESP, Virtuoso+, Ode Gen 1/2, Ode + SSP burrs, Opus, Comandante C40, 1Zpresso J/JX, Timemore C2/C3, DF64, Niche Zero) |
+| `flash_brew` | none | Plan a Japanese iced coffee on the Aiden — computes the ice/water split and an honest 1:9–1:12 hot-concentrate profile (the app's editor stops at 1:14, but the API accepts lower), grounded in the Counter Culture and Lance Hedrick flash brew recipes. Pass an existing profile's ratio instead to get the classic dose-misreport workaround |
+| `brewing_guidelines` | none | Return Aiden-specific brewing principles tailored to a coffee's roast, process, elevation, varietals, and your flavor goal. Temperature priors are derived from [145 Fellow-published brew profiles](data/README.md), not folk wisdom. Supports basket mods (V60/Orea/Kalita drop-ins adjust grind and pulse pacing). Grind settings convert to your grinder (Encore, Encore ESP, Virtuoso+, Ode Gen 1/2, Ode + SSP burrs, Opus, Comandante C40, 1Zpresso J/JX, Timemore C2/C3, DF64, Niche Zero) |
 | `list_profiles` | OAuth | List the brew profiles on your Aiden, grouped by category (custom / stock / shared) |
 | `create_profile` | OAuth | Push a new profile, get back a `brew.link` URL |
+| `update_profile` | OAuth | Edit an existing profile in place — pass any subset of fields; the `brew.link` URL stays the same |
 | `delete_profile` | OAuth | Free up a slot (Aiden has a 14-profile cap) |
 | `share_profile` | OAuth | Generate a `brew.link` for any existing profile |
+| `list_schedules` | OAuth | List scheduled brews — days, time, profile, water amount, enabled state |
+| `create_schedule` | OAuth | Schedule a recurring brew (device-local time, days of the week) |
+| `delete_schedule` | OAuth | Remove a scheduled brew |
+| `toggle_schedule` | OAuth | Pause or resume a schedule without deleting it |
 | `get_device_info` | OAuth | Verify connection + show slot usage |
 
 ## Example session
@@ -79,7 +84,7 @@ Your password reaches the server **exactly once** during OAuth sign-in. The serv
 
 1. Receives your email + password on the `/oauth/authorize` page
 2. Calls Fellow's `/auth/login` to validate them — gets back a JWT
-3. Stores **only the JWT** in Cloudflare KV (encrypted at rest, 1-hour TTL)
+3. Stores **only the JWT** in Cloudflare KV (encrypted at rest, TTL matched to the JWT's own lifetime)
 4. Discards the password
 
 No persistent storage of credentials. No logging of credentials. The JWT is what the server uses to call Fellow's API on your behalf.
@@ -164,7 +169,7 @@ The MCP validates client-side before calling Fellow's API, so you'll get clear e
 - **OAuth 2.0** authorization code grant with PKCE (RFC 6749 + RFC 7636)
 - **Dynamic client registration** (RFC 7591)
 - **Discovery metadata** at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server` (RFC 9728 + RFC 8414)
-- **No persistent state** beyond short-lived KV records (auth codes ≤10min, access tokens ≤1hr, client registrations ≤90 days)
+- **No persistent state** beyond expiring KV records (auth codes ≤10min, access tokens matched to the Fellow JWT lifetime ≤30 days, refresh tokens and client registrations ≤90 days)
 
 ## License
 
@@ -184,4 +189,3 @@ PRs welcome — particularly for:
 - Roasters whose product pages don't parse cleanly via `fetch_coffee_details` (Sey, Heart, Tim Wendelboe pages I haven't tested)
 - Brewing heuristics in `brewing_guidelines` that disagree with what the tool currently returns
 - Multi-device Aiden support
-- Refresh token flow for OAuth so users don't re-auth every hour
