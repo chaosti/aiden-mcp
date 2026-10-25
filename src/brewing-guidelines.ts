@@ -13,7 +13,7 @@
  * maximize body and sweetness while minimizing harsh notes).
  */
 
-import { convertGrind, SUPPORTED_GRINDERS } from "./grinders.js";
+import { SUPPORTED_GRINDERS } from "./grinders.js";
 
 export interface GuidelineInput {
   process?: string;
@@ -248,21 +248,21 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   const pulseSpread = 2.5; // wider spread to reduce acidity
   const pulseLow = round05(pulseHigh - pulseSpread);
 
-  // Grind: basket-specific optimization
-  let grindEncore: number;
+  // Grind: basket-specific optimization for Fellow Ode Gen 2
+  // Ode Gen 2 scale: 1 (finest) to 11 (coarsest) with 0.1 increments
+  // 1 click past a number = +0.1 (e.g., 1 click past 8 = 8.1)
+  let grindOde: number;
   let bloomDuration: number;
   let pulseInterval: number;
 
   if (isBatchBasket) {
-    // Batch basket: slightly coarser grind for even extraction and sweetness
-    // Encore 15-16 range for batch basket's larger bed depth
-    // Light/washed: 15 → Ode 8.0, Medium/natural: 16 → Ode 8.2
+    // Batch basket: coarser grind (8.0-8.2) for even extraction and sweetness
     if (/light/.test(roastStr)) {
-      grindEncore = 15; // → Ode 8.0
+      grindOde = 8.0; // light washed baseline
     } else if (/medium/.test(roastStr)) {
-      grindEncore = isNatural ? 16 : 15.5; // medium → 15.5-16 (Ode 8.1-8.2)
+      grindOde = isNatural || isHoney ? 8.2 : 8.1; // medium: washed 8.1, natural/honey 8.2
     } else {
-      grindEncore = isNatural ? 16 : 15; // default: natural coarser
+      grindOde = isNatural || isHoney ? 8.2 : 8.0; // default: natural/honey coarser
     }
     // Batch basket benefits from longer bloom for even saturation
     bloomDuration = isNatural ? 38 : 45;
@@ -270,14 +270,13 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
     // Longer intervals allow the larger bed to fully drain between pulses
     pulseInterval = 28;
   } else {
-    // Cone basket: 2 clicks finer to compensate for faster drainage
-    // Encore 13-14 range: Light 13 → Ode 5.0, Medium 14 → Ode 5.3
+    // Cone basket: finer grind (5.0-5.3) to compensate for faster drainage
     if (/light/.test(roastStr)) {
-      grindEncore = isNatural ? 13.5 : 13; // light: 13-13.5 → Ode 5.0-5.15
+      grindOde = isNatural ? 5.2 : 5.0; // light: washed 5.0, natural 5.2 (2 clicks)
     } else if (/medium/.test(roastStr)) {
-      grindEncore = 14; // medium → Ode 5.3
+      grindOde = 5.3; // medium: 5.3 (3 clicks past 5)
     } else {
-      grindEncore = isNatural ? 13.5 : 13; // default: natural slightly coarser
+      grindOde = isNatural ? 5.2 : 5.0; // default: natural slightly coarser
     }
     // Cone basket: standard bloom duration
     bloomDuration = isNatural ? 35 : 43;
@@ -286,9 +285,8 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
     pulseInterval = 18;
   }
 
-  // Grind conversion (always Fellow Ode Gen 2)
-  const converted = convertGrind(grindEncore);
-  const grindSetting = `Fellow Ode Gen 2: ${converted.setting} (≈ Encore ${grindEncore})`;
+  // Format grind setting (no conversion needed - direct Ode Gen 2 values)
+  const grindSetting = `Fellow Ode Gen 2: ${grindOde.toFixed(1)}`;
 
   if (isBatchBasket) {
     principles.push(

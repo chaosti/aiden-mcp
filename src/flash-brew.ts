@@ -24,7 +24,7 @@
  * halts extraction instantly, so bitterness risk is low).
  */
 
-import { convertGrind } from "./grinders.js";
+// No imports needed - direct Ode Gen 2 values used
 
 export interface FlashBrewInput {
   dose_g?: number;
@@ -84,10 +84,10 @@ export function flashBrewPlan(input: FlashBrewInput): FlashBrewPlan {
     );
   }
 
-  // Grind: hot pourover reference is Encore 15; flash brew goes ~2 finer (Fellow Ode Gen 2 only)
-  const flashEncore = 13;
-  const converted = convertGrind(flashEncore);
-  const grindLine = `Grind: ${converted.name} ${converted.setting} (≈ Encore ${flashEncore}, about 2 settings finer than your hot recipe). Cold mutes aromatics, so the extra extraction keeps the cup from tasting hollow.`;
+  // Grind: hot pourover baseline is Ode 8.0; flash brew goes finer to compensate for ice dilution
+  // For flash brew: Ode 5.0 (3 settings finer than hot batch baseline)
+  const flashGrind = 5.0;
+  const grindLine = `Grind: Fellow Ode Gen 2 at ${flashGrind.toFixed(1)} (about 3 settings finer than hot batch baseline of 8.0). Cold dilution mutes aromatics, so the finer grind and extra extraction keeps the cup from tasting hollow.`;
 
   // ---- Dose-trick path: the user is keeping an existing profile's ratio ----
   if (input.machine_profile_ratio !== undefined) {

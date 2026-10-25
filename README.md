@@ -10,7 +10,7 @@ This fork is optimized for:
 - ☕ **Batch brews with milk** (300-500ml brewed coffee for adding milk)
 - 🍫 **Rich, smooth, sweet** profile
 - 📉 **Minimize acidity and bitterness**
-- ⚙️ **Fellow Ode Gen 2** grinder (only supported grinder)
+- ⚙️ **Fellow Ode Gen 2** grinder with stock 64mm flat burrs (only supported grinder, 0.1 increments)
 - 🏺 **Batch basket** brewing (default, with cone basket option)
 - ☀️ **Light to medium roasts** (dark roasts trigger warnings)
 - 🚫 **No anaerobic/co-ferment** coffees (warnings added)
