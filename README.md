@@ -1,13 +1,13 @@
 # aiden-mcp (Personalized Edition)
 
-A personalized MCP server for the [Fellow Aiden](https://fellowproducts.com/products/aiden) coffee brewer, optimized for **milk-forward brewing** with the **Fellow Ode Gen 2** grinder.
+A personalized MCP server for the [Fellow Aiden](https://fellowproducts.com/products/aiden) coffee brewer, optimized for **batch brewing with milk** using the **Fellow Ode Gen 2** grinder.
 
-> **Forked and customized** from [ravenintheforrest/aiden-mcp](https://github.com/ravenintheforrest/aiden-mcp). This version is tailored for a specific brewing style: rich body, smooth sweetness, low acidity, batch basket priority.
+> **Forked and customized** from [ravenintheforrest/aiden-mcp](https://github.com/ravenintheforrest/aiden-mcp). This version is tailored for a specific brewing style: batch basket brewing (300-500ml) for milk-based beverages, prioritizing rich body, smooth sweetness, and low acidity.
 
 ## Personalization
 
 This fork is optimized for:
-- ☕ **Milk drinks** (lattes, cappuccinos, flat whites)
+- ☕ **Batch brews with milk** (300-500ml brewed coffee for adding milk)
 - 🍫 **Rich, smooth, sweet** profile
 - 📉 **Minimize acidity and bitterness**
 - ⚙️ **Fellow Ode Gen 2** grinder (only supported grinder)
@@ -53,7 +53,7 @@ This fork is optimized for:
 - **Bloom:** 45s (38s for naturals) for even saturation
 - **Pulses:** 28s intervals for full drainage
 - **Best for:** Rich body, smooth sweetness, forgiving extraction
-- **Use case:** All milk drinks (lattes, cappuccinos, flat whites)
+- **Use case:** Batch brews (300-500ml) for adding milk - perfect for making multiple drinks or large milk-based beverages
 - **Fellow's recommendation:** Setting 8 for small batch (3-5 cups), setting 10 for large batch (5-10 cups)
 
 ### Cone Basket (Experimental)
@@ -61,7 +61,7 @@ This fork is optimized for:
 - **Bloom:** 43s (35s for naturals)
 - **Pulses:** 18s intervals to keep bed saturated
 - **Best for:** Brighter clarity, lighter body
-- **Use case:** Cortados, macchiatos, or when you want more origin character
+- **Use case:** Smaller batches or when you want more origin character in your milk-based brew
 - **Warning:** Naturally emphasizes acidity vs batch basket
 
 ### Temperature Strategy
