@@ -34,7 +34,7 @@ import { handleAuthorizeGet, handleAuthorizePost } from "./oauth/authorize.js";
 import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 
-const VERSION = "0.6.2";
+const VERSION = "1.0.0";
 
 /**
  * @param seed  Client already built by the /mcp pre-flight auth check. Reusing
@@ -733,7 +733,7 @@ export default {
             token: `${origin}/oauth/token`,
             register: `${origin}/oauth/register`,
           },
-          docs: "https://github.com/ravenintheforrest/aiden-mcp",
+          docs: "https://github.com/chaosti/aiden-mcp",
         });
       }
 
