@@ -27,4 +27,4 @@ mode = "smart"
 # Nothing in here is a Fellow password — only short-lived JWTs Fellow itself issues.
 [[kv_namespaces]]
 binding = "AIDEN_OAUTH"
-id = "e9be8ca2a2bf450a9f3073f337d56b9b"
+id = "3b1069e43e0642699072e1feaf532a9a"
