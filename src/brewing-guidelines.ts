@@ -196,7 +196,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
       "BATCH BASKET ADVANTAGES: Flat bed geometry ensures even extraction across the entire coffee bed. Larger capacity (300-500ml) perfect for milk drinks. Forgiving brewing reduces risk of harsh notes."
     );
     principles.push(
-      "BODY & SWEETNESS: 1:14.5 ratio for strength. Batch basket's depth + slightly coarser grind = balanced extraction with full body. Moderate temps enhance sweetness without bitterness."
+      "RATIO ADJUSTMENT: Dynamic ratio (1:14-1:16, default 1:15) based on coffee density and process. Dense high-elevation coffees → tighter ratio (1:14-1:14.5) for strength. Lighter/natural coffees → more open ratio (1:15-1:15.5) for balance. Batch basket's depth + slightly coarser grind = balanced extraction with full body."
     );
     principles.push(
       "LOW ACIDITY: Final pulse 2.5-3°C lower than bloom minimizes brightness. Batch basket's slower drawdown naturally dampens sharp acidity. Longer pulse intervals (28s) allow full drainage."
@@ -206,7 +206,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
       "CONE BASKET CHARACTERISTICS: Conical geometry with single-hole drain = faster drawdown. Requires 2 clicks finer on grind to maintain extraction. Produces cleaner, brighter cup with more clarity but less body than batch basket."
     );
     principles.push(
-      "BODY & SWEETNESS (Cone): 1:14.5 ratio for strength. Finer grind compensates for fast drainage. Expect lighter body than batch—acceptable for cortados/macchiatos where less milk is used. Moderate temps still target sweetness."
+      "RATIO ADJUSTMENT (Cone): Dynamic ratio (1:14-1:16, default 1:15) based on coffee density and process. Same ratio logic as batch basket. Finer grind compensates for fast drainage. Expect lighter body than batch. Moderate temps still target sweetness."
     );
     principles.push(
       "ACIDITY (Cone): Cone baskets naturally emphasize brightness. Final pulse 2-2.5°C lower than bloom. Tighter pulse intervals (18s) keep bed saturated. If too bright, switch to batch basket."
@@ -217,8 +217,32 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   // Starting recipe (personalized for milk drinks)
   // ============================================================
 
-  // Always use 1:14.5 for milk drinks (strength + body)
-  const ratio = 14.5;
+  // Dynamic ratio (1:14-1:16) for milk drinks, default 1:15
+  // Adjust based on coffee density and process for optimal strength and balance
+  let ratio = 15; // default baseline
+
+  // Denser coffees (high elevation, dense varietals): tighter ratio for strength
+  if (isDenseElev && hasDenseVariety) {
+    ratio = 14;
+  } else if (isDenseElev || hasDenseVariety) {
+    ratio = 14.5;
+  }
+
+  // Lighter/softer coffees or processes: more open ratio for balance
+  if (isLowElev) {
+    ratio = 15.5;
+  }
+
+  // Natural process: slightly more open for clarity
+  if (isNatural && ratio === 15) {
+    ratio = 15.5;
+  }
+
+  // Washed process at baseline: keep at 15
+  // Honey process: keep at current ratio (balanced sweetness)
+
+  // Ensure ratio stays within 1:14-1:16 range
+  ratio = Math.max(14, Math.min(16, ratio));
 
   // Temperature model: moderate for milk (adjusted from roast baseline)
   let base = roastBase;

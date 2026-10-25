@@ -20,7 +20,7 @@ This fork is optimized for:
 | Setting | Original | Personalized |
 |---------|----------|--------------|
 | **Grinders** | 11 supported | Fellow Ode Gen 2 only |
-| **Ratio** | Dynamic (1:14-1:20) | Fixed at 1:14.5 |
+| **Ratio** | Dynamic (1:14-1:20) | Dynamic (1:14-1:16, default 1:15) |
 | **Temperature** | 92-97°C | 94-96°C (moderate for milk) |
 | **Basket** | Stock + 3 mods | Batch (default) + Cone (experimental) |
 | **Flavor Goal** | User-specified | Hardcoded: body + sweetness |
@@ -122,7 +122,7 @@ brewing_guidelines({
 
 | Field | Range | Notes |
 |---|---|---|
-| `ratio` | 8–20 | Fixed at 14.5 for milk drinks (1:14.5) |
+| `ratio` | 8–20 | Dynamic 1:14-1:16 (default 1:15) based on coffee density/process |
 | `bloomRatio` | 1–3 | Fixed at 3x |
 | `bloomDuration` | 1–120 | Batch: 45s, Cone: 43s |
 | `bloomTemperature` | 50–99 | 94-96°C range for milk |
@@ -153,7 +153,7 @@ brewing_guidelines({
 
 - **One grinder:** Only Fellow Ode Gen 2 supported
 - **One basket priority:** Batch basket is default, cone is experimental
-- **Fixed ratio:** 1:14.5 for all milk drinks
+- **Dynamic ratio:** 1:14-1:16 (default 1:15) adjusts based on coffee density and process
 - **Fellow's API is private:** Could break without notice
 - **14-profile cap:** Aiden hardware limitation
 
