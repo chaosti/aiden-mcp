@@ -50,8 +50,9 @@ This fork is optimized for:
 
 ### Batch Basket (Default)
 - **Grind:** Fellow Ode Gen 2 (stock burrs) at **8.0-8.2** (medium-coarse, like rough sea salt)
-  - Light roast: **8.0**
-  - Medium roast: **8.1-8.2**
+  - Light roast (washed): **8.0**
+  - Medium roast (washed): **8.1**
+  - Medium roast (natural/honey): **8.2**
 - **Bloom:** 45s (38s for naturals) for even saturation
 - **Pulses:** 28s intervals for full drainage
 - **Best for:** Rich body, smooth sweetness, forgiving extraction
@@ -59,7 +60,8 @@ This fork is optimized for:
 
 ### Cone Basket (Experimental)
 - **Grind:** Fellow Ode Gen 2 (stock burrs) at **5.0-5.3** (medium, like table salt, similar to V60)
-  - Light roast: **5.0-5.2**
+  - Light roast (washed): **5.0**
+  - Light roast (natural): **5.1-5.2**
   - Medium roast: **5.3**
 - **Bloom:** 43s (35s for naturals)
 - **Pulses:** 18s intervals to keep bed saturated
@@ -69,9 +71,9 @@ This fork is optimized for:
 
 ### Temperature Strategy
 - **Light roasts:** 95-96°C (95°C for natural process, 96°C for washed)
-- **Medium roasts:** 93-94°C (93°C for darker mediums, 94°C baseline)
-- **Dark roasts:** Not recommended (triggers warning)
-- **Final pulse:** 2.5-3°C lower than bloom to minimize acidity
+- **Medium roasts:** 93-94°C (93°C for natural process, 94°C for washed, baseline)
+- **Dark roasts:** Not recommended (triggers warning, uses 92°C if brewing anyway)
+- **Pulse temps:** First pulse 0.5°C lower than bloom, second pulse 3°C lower than bloom to minimize acidity
 - **Research basis:** Optimized for milk drinks to minimize acidity/bitterness amplified by milk
 
 ## Setup

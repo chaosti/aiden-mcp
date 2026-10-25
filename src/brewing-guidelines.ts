@@ -51,7 +51,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   // Personal brewing philosophy for milk drinks
   if (isBatchBasket) {
     principles.push(
-      "MILK-FORWARD BREWING (Batch Basket): Optimized for the Aiden batch basket and milk drinks. The batch basket's flat bed and larger capacity provide even extraction, fuller body, and forgiving brewing—perfect for rich, sweet profiles. Ratio locked at 1:14.5 for strength, moderate temps (94-96°C) to minimize acidity/bitterness."
+      "MILK-FORWARD BREWING (Batch Basket): Optimized for the Aiden batch basket and milk drinks. The batch basket's flat bed and larger capacity provide even extraction, fuller body, and forgiving brewing—perfect for rich, sweet profiles. Dynamic ratio (1:14-1:16, default 1:15) adjusts for coffee density and process, moderate temps (94-96°C) to minimize acidity/bitterness."
     );
   } else {
     principles.push(
@@ -239,7 +239,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   let base = roastBase;
   if (isDenseElev) base += 0.5; // less elevation boost for milk
   else if (isLowElev) base -= 0.5;
-  if (isNatural) base -= 0.5; // slight reduction for naturals
+  if (isNatural) base -= 1; // reduce by 1°C for naturals (e.g., light 96→95, medium 94→93)
   if (isHoney) base -= 0.5;
   base = Math.min(97, Math.max(92, base)); // cap at 97°C for milk
 
@@ -256,7 +256,14 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   if (isBatchBasket) {
     // Batch basket: slightly coarser grind for even extraction and sweetness
     // Encore 15-16 range for batch basket's larger bed depth
-    grindEncore = isNatural ? 16 : 15;
+    // Light/washed: 15 → Ode 8.0, Medium/natural: 16 → Ode 8.2
+    if (/light/.test(roastStr)) {
+      grindEncore = 15; // → Ode 8.0
+    } else if (/medium/.test(roastStr)) {
+      grindEncore = isNatural ? 16 : 15.5; // medium → 15.5-16 (Ode 8.1-8.2)
+    } else {
+      grindEncore = isNatural ? 16 : 15; // default: natural coarser
+    }
     // Batch basket benefits from longer bloom for even saturation
     bloomDuration = isNatural ? 38 : 45;
     if (isVeryHighElev) bloomDuration = 50;
@@ -264,8 +271,14 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
     pulseInterval = 28;
   } else {
     // Cone basket: 2 clicks finer to compensate for faster drainage
-    // Encore 13-14 range (same as single-serve or slightly finer)
-    grindEncore = isNatural ? 14 : 13;
+    // Encore 13-14 range: Light 13 → Ode 5.0, Medium 14 → Ode 5.3
+    if (/light/.test(roastStr)) {
+      grindEncore = isNatural ? 13.5 : 13; // light: 13-13.5 → Ode 5.0-5.15
+    } else if (/medium/.test(roastStr)) {
+      grindEncore = 14; // medium → Ode 5.3
+    } else {
+      grindEncore = isNatural ? 13.5 : 13; // default: natural slightly coarser
+    }
     // Cone basket: standard bloom duration
     bloomDuration = isNatural ? 35 : 43;
     if (isVeryHighElev) bloomDuration = 48;
