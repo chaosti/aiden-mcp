@@ -438,10 +438,9 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         "Principles:",
         ...guidelines.principles.map((p, i) => `  ${i + 1}. ${p}`),
         "",
-        "Starting-point recipe (adjust based on principles above):",
+        "Starting-point recipe (BATCH BASKET - adjust based on principles above):",
         `  Ratio:   ${guidelines.starting_recipe.ratio}`,
         `  Bloom:   ${guidelines.starting_recipe.bloom}`,
-        `  SS:      ${guidelines.starting_recipe.ss_pulses}`,
         `  Batch:   ${guidelines.starting_recipe.batch_pulses}`,
         `  Grind:   ${guidelines.starting_recipe.grind_setting}`,
       ];

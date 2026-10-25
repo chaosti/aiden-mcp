@@ -84,15 +84,10 @@ export function flashBrewPlan(input: FlashBrewInput): FlashBrewPlan {
     );
   }
 
-  // Grind: hot pourover reference is Encore 15; flash brew goes ~2 finer.
+  // Grind: hot pourover reference is Encore 15; flash brew goes ~2 finer (Fellow Ode Gen 2 only)
   const flashEncore = 13;
-  let grindLine = `Grind: ~${flashEncore} on the Baratza Encore scale (about 2 settings finer than your hot recipe). Cold mutes aromatics, so the extra extraction is what keeps the cup from tasting hollow.`;
-  if (input.grinder) {
-    const converted = convertGrind(flashEncore, input.grinder);
-    if (converted && converted.name !== "Baratza Encore") {
-      grindLine = `Grind: ${converted.name} ${converted.setting} (≈ Encore ${flashEncore}, about 2 settings finer than your hot recipe). Cold mutes aromatics, so the extra extraction keeps the cup from tasting hollow.`;
-    }
-  }
+  const converted = convertGrind(flashEncore);
+  const grindLine = `Grind: ${converted.name} ${converted.setting} (≈ Encore ${flashEncore}, about 2 settings finer than your hot recipe). Cold mutes aromatics, so the extra extraction keeps the cup from tasting hollow.`;
 
   // ---- Dose-trick path: the user is keeping an existing profile's ratio ----
   if (input.machine_profile_ratio !== undefined) {
