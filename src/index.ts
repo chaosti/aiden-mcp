@@ -20,7 +20,6 @@ import { clientFromHeaders, NoCredentialsError, ExpiredTokenError } from "./auth
 import { profileInputSchema, checkPulseConsistency, boolish } from "./validation.js";
 import { FellowApiError, FellowClient, categorize, CUSTOM_PROFILE_CAP } from "./fellow-api.js";
 import { diffProfileEcho } from "./fellow-schemas.js";
-import { fetchCoffeeDetails } from "./coffee-fetcher.js";
 import { brewingGuidelines } from "./brewing-guidelines.js";
 import { flashBrewPlan } from "./flash-brew.js";
 import { SUPPORTED_GRINDERS } from "./grinders.js";
@@ -346,56 +345,11 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   );
 
   // ============================================================
-  // fetch_coffee_details — scrape a roaster product page
-  // ============================================================
-  server.tool(
-    "fetch_coffee_details",
-    "Fetch a coffee from a roaster's product page (Counter Culture, Onyx, Sey, Heart, etc. — any Shopify-based roaster) and return structured details: name, varieties, process, elevation, country, tasting notes, story. Use this when the user pastes a URL and wants you to design a brew profile from it. Does NOT require Aiden auth — works on URLs alone.",
-    {
-      url: z
-        .string()
-        .url()
-        .describe("Roaster product page URL, e.g. https://counterculturecoffee.com/products/mpemba"),
-    },
-    async ({ url }) => {
-      const details = await fetchCoffeeDetails(url);
-
-      // Format as readable text — easier for the LLM to reason over than raw JSON
-      const lines: string[] = [
-        details.coffee_name ? `Coffee: ${details.coffee_name}` : "Coffee: (name not found)",
-        details.roaster ? `Roaster: ${details.roaster}` : "",
-        details.country ? `Country: ${details.country}` : "",
-        details.region ? `Region: ${details.region}` : "",
-        details.producer ? `Producer: ${details.producer}` : "",
-        details.elevation ? `Elevation: ${details.elevation}` : "",
-        details.varieties?.length ? `Varieties: ${details.varieties.join(", ")}` : "",
-        details.process ? `Process: ${details.process}` : "",
-        details.tasting_notes?.length ? `Tasting notes: ${details.tasting_notes.join(", ")}` : "",
-        "",
-      ];
-      if (details.description) {
-        lines.push(`Description:\n${details.description.slice(0, 600)}${details.description.length > 600 ? "…" : ""}`);
-      }
-      if (details.story) {
-        lines.push("", `Story:\n${details.story.slice(0, 800)}${details.story.length > 800 ? "…" : ""}`);
-      }
-      if (details.warnings.length) {
-        lines.push("", `⚠ Warnings:`, ...details.warnings.map((w) => `  - ${w}`));
-      }
-      lines.push("", `Source: ${details.source} | URL: ${details.url}`);
-
-      return {
-        content: [{ type: "text", text: lines.filter((l) => l !== "").join("\n") || "(no details extracted)" }],
-      };
-    },
-  );
-
-  // ============================================================
   // brewing_guidelines — encoded heuristics for designing profiles
   // ============================================================
   server.tool(
     "brewing_guidelines",
-    "Get Aiden-specific brewing guidelines tailored to a coffee's characteristics. Returns brewing principles + a starting-point recipe. Use this AFTER fetching coffee details (or when user provides them directly), then design the actual create_profile call using the returned principles. IMPORTANT: if the user already has a profile made for this exact coffee (Fellow Drops or a roaster-shared profile), do NOT redesign it from these principles — it was dialed by people who tasted this coffee. Adjust it one variable at a time (1–2°C max) toward what the user disliked. Does NOT require Aiden auth.",
+    "Get Aiden-specific brewing guidelines tailored to a coffee's characteristics. Optimized for milk-forward batch brewing with Fellow Ode Gen 2 (stock burrs). Returns brewing principles + a starting-point recipe. Use this when user provides coffee details (typically from photos of coffee bags). IMPORTANT: if the user already has a profile made for this exact coffee (Fellow Drops or a roaster-shared profile), do NOT redesign it from these principles — it was dialed by people who tasted this coffee. Adjust it one variable at a time (1–2°C max) toward what the user disliked. Does NOT require Aiden auth.",
     {
       process: z.string().optional().describe("Process: washed, natural, honey, anaerobic, etc."),
       roast: z
@@ -407,21 +361,16 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       varieties: z.array(z.string()).optional().describe("Varietal names, e.g. ['Bourbon', 'SL28']"),
       elevation: z.string().optional().describe("Elevation, e.g. '1,800–2,000 masl' or '1750m'"),
       tasting_notes: z.array(z.string()).optional().describe("Notes on the bag, e.g. ['fig', 'strawberry', 'honey']"),
-      flavor_goal: z
-        .string()
-        .optional()
-        .describe(
-          "What the user is trying to achieve, e.g. 'more fruit', 'less acidity', 'bolder body'. Drives explicit recipe adjustments.",
-        ),
       user_preference_ratio: z
         .number()
         .optional()
         .describe("User's typical ratio (e.g. 15 for 1:15). Defaults to 1:15 washed, 1:16 natural."),
       grinder: z
         .string()
+        .default("Fellow Ode Gen 2 (stock burrs)")
         .optional()
         .describe(
-          `User's grinder, so the grind setting comes back on their dial instead of the Baratza Encore reference scale. Supported: ${SUPPORTED_GRINDERS.join(", ")}. ASK the user what grinder they have if they haven't said.`,
+          `User's grinder (fixed to Fellow Ode Gen 2 with stock 64mm flat burrs for this setup).`,
         ),
       brew_basket: z
         .string()

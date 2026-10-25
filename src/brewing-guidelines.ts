@@ -5,8 +5,7 @@
  * - Rich, smooth body with enhanced sweetness
  * - Minimize acidity and bitterness
  * - Light to medium roasts preferred
- * - No anaerobic/co-ferment coffees
- * - Fellow Ode Gen 2 grinder
+ * - Fellow Ode Gen 2 grinder (stock 64mm flat burrs)
  * - BATCH BASKET (optimized for larger volumes, fuller body, forgiving extraction)
  *
  * Temperature and ratio priors are derived from community Fellow Drops profiles
@@ -65,18 +64,10 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
 
   // Detect process category
   const proc = (input.process ?? "").toLowerCase();
-  const isAnaerobic = /anaerobic|carbonic|co-?ferment/i.test(proc);
-  const isNatural = !isAnaerobic && /natural|sundried|dry/i.test(proc);
-  const isHoney = !isAnaerobic && !isNatural && /honey|semi/i.test(proc);
-  const isWashed = !isNatural && !isHoney && !isAnaerobic && /washed|fully washed/i.test(proc);
-  const processKnown = isNatural || isHoney || isAnaerobic || isWashed;
-
-  // Warn about anaerobic/coferment (not preferred)
-  if (isAnaerobic) {
-    warnings.push(
-      "⚠️ ANAEROBIC/CO-FERMENT DETECTED: This process is not preferred due to potential funky/unusual flavors that don't pair well with milk. Consider washed or natural process coffees instead."
-    );
-  }
+  const isNatural = /natural|sundried|dry/i.test(proc);
+  const isHoney = !isNatural && /honey|semi/i.test(proc);
+  const isWashed = !isNatural && !isHoney && /washed|fully washed/i.test(proc);
+  const processKnown = isNatural || isHoney || isWashed;
 
   // Detect roast tier — adjusted for milk-forward brewing (avoid dark roasts)
   const roastStr = (input.roast ?? "").toLowerCase();
@@ -157,7 +148,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
     );
   }
 
-  if (!processKnown && !isAnaerobic) {
+  if (!processKnown) {
     warnings.push(
       "Process not specified. Recipe defaults to balanced profile suitable for milk drinks."
     );
@@ -250,7 +241,6 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   else if (isLowElev) base -= 0.5;
   if (isNatural) base -= 0.5; // slight reduction for naturals
   if (isHoney) base -= 0.5;
-  if (isAnaerobic) base -= 1.5; // still reduce for anaerobic
   base = Math.min(97, Math.max(92, base)); // cap at 97°C for milk
 
   const bloomTemp = round05(base);
@@ -307,9 +297,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
       ? "washed"
       : isHoney
         ? "honey"
-        : isAnaerobic
-          ? "anaerobic"
-          : "unspecified";
+        : "unspecified";
   const roastDescr = roastKnown ? `${roastStr.trim()} roast ` : "";
   const elevDescr = peakElev ? ` (${peakElev}m)` : "";
   const basketDescr = isBatchBasket ? "BATCH BASKET" : "CONE BASKET (Experimental)";
