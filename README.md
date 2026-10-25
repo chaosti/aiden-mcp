@@ -149,6 +149,24 @@ brewing_guidelines({
 - Fixed 12 vulnerabilities (16→4 remaining)
 - Remaining vulnerabilities are in dev dependencies only
 
+### OAuth Security Hardening (v1.1.0)
+
+This fork includes comprehensive security hardening for OAuth endpoints:
+
+- **Rate Limiting**: 10 attempts per 5-minute window on all OAuth endpoints to prevent brute force attacks
+- **Enhanced Redirect URI Validation**: Blocks malicious URI schemes (javascript:, data:, file:), validates hostname structure, prevents IP addresses for HTTPS
+- **CORS Protection**: Allowlist-based origin validation (claude.ai only), proper preflight handling, explicit rejection of unauthorized origins
+- **Reduced Error Verbosity**: Minimized information disclosure in error messages
+- **KV Namespace Isolation**: Self-hosters must create their own KV namespace for security isolation
+
+These protections defend against:
+- Brute force attacks on Fellow credentials
+- Token enumeration and abuse
+- Client registration spam
+- Malicious redirect URIs
+- Unauthorized cross-origin access
+- Information disclosure through verbose errors
+
 ## Technical Details
 
 - **Cloudflare Worker** (self-hosted)
