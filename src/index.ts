@@ -32,6 +32,7 @@ import { handleRegister } from "./oauth/register.js";
 import { handleAuthorizeGet, handleAuthorizePost } from "./oauth/authorize.js";
 import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
+import { handleCorsPreflightRequest, addCorsHeaders } from "./oauth/cors.js";
 
 const VERSION = "1.0.0";
 
@@ -654,17 +655,25 @@ export default {
       }
 
       // ---- OAuth endpoints ----
+      // Handle CORS preflight requests
+      if (pathname.startsWith("/oauth/")) {
+        const preflightResponse = handleCorsPreflightRequest(request);
+        if (preflightResponse) {
+          return preflightResponse;
+        }
+      }
+
       if (request.method === "POST" && pathname === "/oauth/register") {
-        return handleRegister(request, env);
+        return addCorsHeaders(await handleRegister(request, env), request);
       }
       if (request.method === "GET" && pathname === "/oauth/authorize") {
-        return handleAuthorizeGet(url, env);
+        return addCorsHeaders(await handleAuthorizeGet(url, env), request);
       }
       if (request.method === "POST" && pathname === "/oauth/authorize") {
-        return handleAuthorizePost(request, env);
+        return addCorsHeaders(await handleAuthorizePost(request, env), request);
       }
       if (request.method === "POST" && pathname === "/oauth/token") {
-        return handleToken(request, env);
+        return addCorsHeaders(await handleToken(request, env), request);
       }
 
       // ---- Health / root ----

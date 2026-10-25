@@ -20,6 +20,7 @@ import {
   base64UrlEncode,
 } from "./kv.js";
 import { FellowClient } from "../fellow-api.js";
+import { checkRateLimit, tokenRateLimitKey } from "../rate-limit.js";
 
 // Access tokens are capped at 30 days but in practice track the Fellow JWT,
 // which lives only ~15 minutes — so Claude refreshes roughly every 15 min via
@@ -28,6 +29,19 @@ const MAX_TTL_SEC = 60 * 60 * 24 * 30; // 30 days cap
 const FALLBACK_TTL_SEC = 60 * 60 * 24; // 24h if JWT exp not parseable
 
 export async function handleToken(request: Request, env: Env): Promise<Response> {
+  // Rate limiting: prevent token enumeration and abuse
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const rateLimitKey = tokenRateLimitKey(clientIp);
+  const rateLimit = await checkRateLimit(env, rateLimitKey);
+
+  if (!rateLimit.allowed) {
+    return jsonError(
+      "too_many_requests",
+      "Rate limit exceeded. Please try again later.",
+      429
+    );
+  }
+
   const ct = request.headers.get("Content-Type") ?? "";
   if (!ct.includes("application/x-www-form-urlencoded")) {
     return jsonError("invalid_request", "Token endpoint expects application/x-www-form-urlencoded", 400);

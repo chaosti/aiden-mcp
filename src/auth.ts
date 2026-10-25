@@ -52,7 +52,7 @@ export async function clientFromHeaders(headers: Headers, env: Env): Promise<Fel
     // error so the worker can deliver a clear "please reconnect" message
     // to the user rather than a generic OAuth challenge.
     throw new ExpiredTokenError(
-      "Your Aiden session has expired. Disconnect and reconnect the Aiden connector in Claude.ai → Settings → Connectors. The reconnection takes about 30 seconds — you'll re-enter your Fellow login.",
+      "Session expired. Please reconnect your Aiden connector.",
     );
   }
 

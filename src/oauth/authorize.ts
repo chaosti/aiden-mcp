@@ -19,6 +19,7 @@ import {
   generateRandomToken,
   sha256Hex,
 } from "./kv.js";
+import { checkRateLimit, authRateLimitKey } from "../rate-limit.js";
 
 interface AuthorizeQuery {
   response_type?: string;
@@ -110,6 +111,19 @@ export async function handleAuthorizePost(request: Request, env: Env): Promise<R
 
   if (!email || !password) {
     return renderSignInError(q, "Email and password are both required.");
+  }
+
+  // Rate limiting: prevent brute force attacks on Fellow credentials
+  const clientIp = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const rateLimitKey = await authRateLimitKey(email, clientIp);
+  const rateLimit = await checkRateLimit(env, rateLimitKey);
+
+  if (!rateLimit.allowed) {
+    const resetMin = Math.ceil((rateLimit.resetAt - Math.floor(Date.now() / 1000)) / 60);
+    return renderSignInError(
+      q,
+      `Too many login attempts. Please try again in ${resetMin} minute${resetMin !== 1 ? 's' : ''}.`
+    );
   }
 
   // Validate Fellow credentials by attempting to authenticate

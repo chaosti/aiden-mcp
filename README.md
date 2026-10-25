@@ -84,13 +84,16 @@ cd aiden-mcp
 npm install
 npx wrangler login
 
-# Create OAuth state KV namespace
+# Create OAuth state KV namespace (IMPORTANT: Create your own!)
 npx wrangler kv namespace create AIDEN_OAUTH
-# Copy the id into wrangler.toml under [[kv_namespaces]]
+# Copy the generated namespace ID into wrangler.toml under [[kv_namespaces]]
+# Replace the existing id with YOUR namespace ID
 
 # Deploy
 npx wrangler deploy
 ```
+
+**Security Note:** The KV namespace ID in `wrangler.toml` is specific to the original deployment. **Self-hosters MUST create their own KV namespace** as shown above for security isolation. Never share KV namespace IDs between deployments.
 
 ### Local development
 
