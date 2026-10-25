@@ -32,11 +32,10 @@ This fork is optimized for:
 
 | Tool | Auth | What |
 |---|---|---|
-| `fetch_coffee_details` | none | Scrape Shopify roaster product pages (Counter Culture, Onyx, Sey, Heart, Verve) for structured coffee data |
-| `flash_brew` | none | Plan Japanese iced coffee with automatic ice/water split calculation |
-| `brewing_guidelines` | none | **Personalized brewing profiles** optimized for milk drinks with batch or cone basket. Returns principles, starting recipe with Fellow Ode Gen 2 grind settings |
+| `brewing_guidelines` | none | **Personalized brewing profiles** optimized for milk-forward batch brewing. Returns principles and starting recipe with Fellow Ode Gen 2 grind settings (8.0-8.2 batch, 5.0-5.3 cone), dynamic ratio (1:14-1:16), and moderate temps (94-96°C) |
+| `flash_brew` | none | Plan Japanese iced coffee with automatic ice/water split calculation. Uses Ode 5.0 grind setting optimized for flash brewing |
 | `list_profiles` | OAuth | List brew profiles on your Aiden |
-| `create_profile` | OAuth | Push new profile, get `brew.link` URL |
+| `create_profile` | OAuth | Push new profile to Aiden, get `brew.link` URL |
 | `update_profile` | OAuth | Edit existing profile |
 | `delete_profile` | OAuth | Free up profile slot (14-profile cap) |
 | `share_profile` | OAuth | Generate `brew.link` for profile |
@@ -45,6 +44,8 @@ This fork is optimized for:
 | `delete_schedule` | OAuth | Remove scheduled brew |
 | `toggle_schedule` | OAuth | Pause/resume schedule |
 | `get_device_info` | OAuth | Verify connection + slot usage |
+
+**Note:** This personalized version focuses on brewing profiles from coffee photos/descriptions you provide to Claude, rather than URL scraping. The `fetch_coffee_details` tool has been removed to streamline the workflow.
 
 ## Brewing Philosophy
 
