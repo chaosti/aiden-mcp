@@ -115,7 +115,7 @@ brewing_guidelines({
   process: "natural",
   basket_type: "cone"
 })
-// Returns: Ode Gen 2 at 4, 95°C, 18s pulse intervals + warning
+// Returns: Ode Gen 2 at 4, 96°C, 18s pulse intervals + warning
 ```
 
 ## Profile Schema
@@ -125,7 +125,7 @@ brewing_guidelines({
 | `ratio` | 8–20 | Fixed at 14.5 for milk drinks (1:14.5) |
 | `bloomRatio` | 1–3 | Fixed at 3x |
 | `bloomDuration` | 1–120 | Batch: 45s, Cone: 43s |
-| `bloomTemperature` | 50–99 | 93-95°C range for milk |
+| `bloomTemperature` | 50–99 | 94-96°C range for milk |
 | `batchPulsesNumber` | 1–10 | Fixed at 2 |
 | `batchPulsesInterval` | 5–60 | Batch: 28s, Cone: 18s |
 | `batchPulseTemperatures` | array of 50–99 | Descending temps |
