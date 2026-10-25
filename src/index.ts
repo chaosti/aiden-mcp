@@ -34,7 +34,7 @@ import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 import { handleCorsPreflightRequest, addCorsHeaders } from "./oauth/cors.js";
 
-const VERSION = "1.1.0";
+const VERSION = "1.1.2";
 
 /**
  * @param seed  Client already built by the /mcp pre-flight auth check. Reusing
