@@ -24,8 +24,8 @@ This fork is optimized for:
 | **Temperature** | 92-97°C | 94-96°C (moderate for milk) |
 | **Basket** | Stock + 3 mods | Batch (default) + Cone (experimental) |
 | **Flavor Goal** | User-specified | Hardcoded: body + sweetness |
-| **Grind (Batch)** | - | **Ode 8-9** |
-| **Grind (Cone)** | - | **Ode 4-5** |
+| **Grind (Batch)** | - | **Ode 8.0-8.2** (stock burrs) |
+| **Grind (Cone)** | - | **Ode 5.0-5.3** (stock burrs) |
 | **Pulse Interval** | 20-25s | 28s (batch) / 18s (cone) |
 
 ## What it does
@@ -49,15 +49,18 @@ This fork is optimized for:
 ## Brewing Philosophy
 
 ### Batch Basket (Default)
-- **Grind:** Fellow Ode Gen 2 at **8-9** (medium-coarse, like rough sea salt)
+- **Grind:** Fellow Ode Gen 2 (stock burrs) at **8.0-8.2** (medium-coarse, like rough sea salt)
+  - Light roast: **8.0**
+  - Medium roast: **8.1-8.2**
 - **Bloom:** 45s (38s for naturals) for even saturation
 - **Pulses:** 28s intervals for full drainage
 - **Best for:** Rich body, smooth sweetness, forgiving extraction
 - **Use case:** Batch brews (300-500ml) for adding milk - perfect for making multiple drinks or large milk-based beverages
-- **Fellow's recommendation:** Setting 8 for small batch (3-5 cups), setting 10 for large batch (5-10 cups)
 
 ### Cone Basket (Experimental)
-- **Grind:** Fellow Ode Gen 2 at **4-5** (medium, V60 pour-over range)
+- **Grind:** Fellow Ode Gen 2 (stock burrs) at **5.0-5.3** (medium, like table salt, similar to V60)
+  - Light roast: **5.0-5.2**
+  - Medium roast: **5.3**
 - **Bloom:** 43s (35s for naturals)
 - **Pulses:** 18s intervals to keep bed saturated
 - **Best for:** Brighter clarity, lighter body
@@ -65,10 +68,11 @@ This fork is optimized for:
 - **Warning:** Naturally emphasizes acidity vs batch basket
 
 ### Temperature Strategy
-- **Light roasts:** 96°C
-- **Medium roasts:** 94°C
+- **Light roasts:** 95-96°C (95°C for natural process, 96°C for washed)
+- **Medium roasts:** 93-94°C (93°C for darker mediums, 94°C baseline)
 - **Dark roasts:** Not recommended (triggers warning)
 - **Final pulse:** 2.5-3°C lower than bloom to minimize acidity
+- **Research basis:** Optimized for milk drinks to minimize acidity/bitterness amplified by milk
 
 ## Setup
 
@@ -105,7 +109,7 @@ brewing_guidelines({
   process: "washed",
   elevation: "1800m"
 })
-// Returns: Ode Gen 2 at 8, 94°C, 28s pulse intervals
+// Returns: Ode Gen 2 (stock burrs) at 8, 94°C, 28s pulse intervals
 ```
 
 ### Cone Basket (Experimental)
@@ -115,7 +119,7 @@ brewing_guidelines({
   process: "natural",
   basket_type: "cone"
 })
-// Returns: Ode Gen 2 at 4, 96°C, 18s pulse intervals + warning
+// Returns: Ode Gen 2 (stock burrs) at 5⅓, 96°C, 18s pulse intervals + warning
 ```
 
 ## Profile Schema

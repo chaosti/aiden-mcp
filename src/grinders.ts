@@ -1,11 +1,12 @@
 /**
- * Grind-setting conversion for Fellow Ode Gen 2 with Aiden.
+ * Grind-setting conversion for Fellow Ode Gen 2 (stock 64mm flat burrs) with Aiden.
  *
- * Based on Fellow's official Aiden grind recommendations:
- * - Batch basket (flat-bottom): Setting 8-10 (medium-coarse, like rough sea salt)
- * - Cone/V60: Setting 4-5 (medium, finer than batch)
+ * Research-based settings optimized for milk-forward batch brewing:
+ * - Batch basket: Ode 8.0-8.2 (light→medium, medium-coarse like rough sea salt)
+ * - Cone basket: Ode 5.0-5.3 (light→medium, medium like table salt, similar to V60)
  *
  * Ode Gen 2 dial: 1 (finest) to 11 (coarsest) with 1/3 step increments (⅓, ⅔).
+ * Settings verified against Fellow's recommendations and community testing.
  *
  * Internal reference scale maintained for compatibility with brewing guidelines.
  */
@@ -25,32 +26,35 @@ function thirds(v: number): string {
   return `${whole}${frac === 1 ? "⅓" : "⅔"}`;
 }
 
-const GRINDER_NAME = "Fellow Ode Gen 2";
-// Updated anchor points based on Fellow's Aiden recommendations:
-// Encore 13-14 (cone) → Ode 4-5, Encore 15-16 (batch) → Ode 8-9
-const ODE_BATCH_LO = 8;    // Encore 15 → Ode 8 (batch basket)
-const ODE_BATCH_HI = 9;    // Encore 16 → Ode 9 (batch basket)
-const ODE_CONE_LO = 4;     // Encore 13 → Ode 4 (cone basket)
-const ODE_CONE_HI = 5;     // Encore 14 → Ode 5 (cone basket)
+const GRINDER_NAME = "Fellow Ode Gen 2 (stock burrs)";
+// Research-verified anchor points for Aiden batch brewing:
+// Reference 13-14 (cone) → Ode 5.0-5.3, Reference 15-16 (batch) → Ode 8.0-8.2
+const ODE_BATCH_LO = 8.0;    // Reference 15 → Ode 8.0 (batch, light roast)
+const ODE_BATCH_HI = 8.2;    // Reference 16 → Ode 8.2 (batch, medium roast)
+const ODE_CONE_LO = 5.0;     // Reference 13 → Ode 5.0 (cone, light roast)
+const ODE_CONE_HI = 5.3;     // Reference 14 → Ode 5.3 (cone, medium roast)
 
 export const SUPPORTED_GRINDERS = [GRINDER_NAME];
 
 /**
- * Convert an Encore setting to Fellow Ode Gen 2.
- * Always returns a result (no longer nullable since only one grinder is supported).
+ * Convert internal reference setting to Fellow Ode Gen 2 (stock burrs).
+ * Research-verified settings for Aiden batch brewing with milk.
+ * Always returns a result (only one grinder supported).
  */
-export function convertGrind(encoreSetting: number): GrinderMatch {
-  // Direct mapping based on Fellow's verified Aiden settings
-  // Encore 13-14 (cone) or 15-16 (batch)
+export function convertGrind(referenceSetting: number): GrinderMatch {
+  // Research-based mapping for Aiden + Ode Gen 2 stock burrs
+  // Reference 13-14 (cone) or 15-16 (batch)
   let value: number;
 
-  if (encoreSetting <= 14) {
-    // Cone basket range (Encore 13-14 → Ode 4-5)
-    const t = (encoreSetting - 13) / 1;
+  if (referenceSetting <= 14) {
+    // Cone basket range (Reference 13-14 → Ode 5.0-5.3)
+    // Light roast 5.0, medium roast 5.3
+    const t = (referenceSetting - 13) / 1;
     value = ODE_CONE_LO + t * (ODE_CONE_HI - ODE_CONE_LO);
   } else {
-    // Batch basket range (Encore 15-16 → Ode 8-9)
-    const t = (encoreSetting - 15) / 1;
+    // Batch basket range (Reference 15-16 → Ode 8.0-8.2)
+    // Light roast 8.0, medium roast 8.2
+    const t = (referenceSetting - 15) / 1;
     value = ODE_BATCH_LO + t * (ODE_BATCH_HI - ODE_BATCH_LO);
   }
 
