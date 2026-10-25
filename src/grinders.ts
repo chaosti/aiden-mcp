@@ -7,8 +7,7 @@
  *
  * Ode Gen 2 dial: 1 (finest) to 11 (coarsest) with 1/3 step increments (⅓, ⅔).
  *
- * Encore reference scale maintained for compatibility, but mapped to verified
- * Fellow Ode Gen 2 settings for Aiden batch brewing.
+ * Internal reference scale maintained for compatibility with brewing guidelines.
  */
 
 export interface GrinderMatch {

@@ -52,7 +52,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   // Personal brewing philosophy for milk drinks
   if (isBatchBasket) {
     principles.push(
-      "MILK-FORWARD BREWING (Batch Basket): Optimized for the Aiden batch basket and milk drinks. The batch basket's flat bed and larger capacity provide even extraction, fuller body, and forgiving brewing—perfect for rich, sweet profiles. Ratio locked at 1:14.5 for strength, moderate temps (93-95°C) to minimize acidity/bitterness."
+      "MILK-FORWARD BREWING (Batch Basket): Optimized for the Aiden batch basket and milk drinks. The batch basket's flat bed and larger capacity provide even extraction, fuller body, and forgiving brewing—perfect for rich, sweet profiles. Ratio locked at 1:14.5 for strength, moderate temps (94-96°C) to minimize acidity/bitterness."
     );
   } else {
     principles.push(
@@ -82,9 +82,9 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   const roastStr = (input.roast ?? "").toLowerCase();
   const roastKnown = /light|medium/.test(roastStr);
   let roastBase = 94; // default: medium roast baseline for milk drinks
-  if (/medium[\s-]?light/.test(roastStr)) roastBase = 94.5;
-  else if (/light/.test(roastStr)) roastBase = 95;
-  else if (/medium/.test(roastStr)) roastBase = 93.5;
+  if (/medium[\s-]?light/.test(roastStr)) roastBase = 95;
+  else if (/light/.test(roastStr)) roastBase = 96;
+  else if (/medium/.test(roastStr)) roastBase = 94;
 
   // Warn about dark roasts (not preferred)
   if (/dark/.test(roastStr)) {
@@ -128,7 +128,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
 
   // Milk-drink temperature philosophy: moderate temps to avoid harsh notes
   principles.push(
-    "TEMPERATURE FOR MILK: Moderate temps (93-95°C) maximize body and sweetness while minimizing acidity and bitterness that become amplified in milk. Light roasts at 94.5-95°C, medium at 93-94°C."
+    "TEMPERATURE FOR MILK: Moderate temps (94-96°C) maximize body and sweetness while minimizing acidity and bitterness that become amplified in milk. Light roasts at 96°C, medium at 94°C."
   );
 
   // Roast guidance
@@ -227,7 +227,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   if (isNatural) base -= 0.5; // slight reduction for naturals
   if (isHoney) base -= 0.5;
   if (isAnaerobic) base -= 1.5; // still reduce for anaerobic
-  base = Math.min(95, Math.max(92, base)); // cap at 95°C for milk
+  base = Math.min(97, Math.max(92, base)); // cap at 97°C for milk
 
   const bloomTemp = round05(base);
   const pulseHigh = round05(base - 0.5);

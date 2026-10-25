@@ -21,11 +21,11 @@ This fork is optimized for:
 |---------|----------|--------------|
 | **Grinders** | 11 supported | Fellow Ode Gen 2 only |
 | **Ratio** | Dynamic (1:14-1:20) | Fixed at 1:14.5 |
-| **Temperature** | 92-97°C | 93-95°C (moderate for milk) |
+| **Temperature** | 92-97°C | 94-96°C (moderate for milk) |
 | **Basket** | Stock + 3 mods | Batch (default) + Cone (experimental) |
 | **Flavor Goal** | User-specified | Hardcoded: body + sweetness |
-| **Grind (Batch)** | - | **Ode 8-9** (Encore 15-16) |
-| **Grind (Cone)** | - | **Ode 4-5** (Encore 13-14) |
+| **Grind (Batch)** | - | **Ode 8-9** |
+| **Grind (Cone)** | - | **Ode 4-5** |
 | **Pulse Interval** | 20-25s | 28s (batch) / 18s (cone) |
 
 ## What it does
@@ -65,8 +65,8 @@ This fork is optimized for:
 - **Warning:** Naturally emphasizes acidity vs batch basket
 
 ### Temperature Strategy
-- **Light roasts:** 94.5-95°C
-- **Medium roasts:** 93-94°C
+- **Light roasts:** 96°C
+- **Medium roasts:** 94°C
 - **Dark roasts:** Not recommended (triggers warning)
 - **Final pulse:** 2.5-3°C lower than bloom to minimize acidity
 
