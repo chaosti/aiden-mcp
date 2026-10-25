@@ -24,8 +24,8 @@ This fork is optimized for:
 | **Temperature** | 92-97°C | 93-95°C (moderate for milk) |
 | **Basket** | Stock + 3 mods | Batch (default) + Cone (experimental) |
 | **Flavor Goal** | User-specified | Hardcoded: body + sweetness |
-| **Grind (Batch)** | - | Ode 5-5⅓ (Encore 15-16) |
-| **Grind (Cone)** | - | Ode 4⅓-4⅔ (Encore 13-14) |
+| **Grind (Batch)** | - | **Ode 8-9** (Encore 15-16) |
+| **Grind (Cone)** | - | **Ode 4-5** (Encore 13-14) |
 | **Pulse Interval** | 20-25s | 28s (batch) / 18s (cone) |
 
 ## What it does
@@ -49,14 +49,15 @@ This fork is optimized for:
 ## Brewing Philosophy
 
 ### Batch Basket (Default)
-- **Grind:** Fellow Ode Gen 2 at 5-5⅓ (slightly coarser)
+- **Grind:** Fellow Ode Gen 2 at **8-9** (medium-coarse, like rough sea salt)
 - **Bloom:** 45s (38s for naturals) for even saturation
 - **Pulses:** 28s intervals for full drainage
 - **Best for:** Rich body, smooth sweetness, forgiving extraction
 - **Use case:** All milk drinks (lattes, cappuccinos, flat whites)
+- **Fellow's recommendation:** Setting 8 for small batch (3-5 cups), setting 10 for large batch (5-10 cups)
 
 ### Cone Basket (Experimental)
-- **Grind:** Fellow Ode Gen 2 at 4⅓-4⅔ (2 clicks finer)
+- **Grind:** Fellow Ode Gen 2 at **4-5** (medium, V60 pour-over range)
 - **Bloom:** 43s (35s for naturals)
 - **Pulses:** 18s intervals to keep bed saturated
 - **Best for:** Brighter clarity, lighter body
@@ -104,7 +105,7 @@ brewing_guidelines({
   process: "washed",
   elevation: "1800m"
 })
-// Returns: Ode Gen 2 at 5, 94°C, 28s pulse intervals
+// Returns: Ode Gen 2 at 8, 94°C, 28s pulse intervals
 ```
 
 ### Cone Basket (Experimental)
@@ -114,7 +115,7 @@ brewing_guidelines({
   process: "natural",
   basket_type: "cone"
 })
-// Returns: Ode Gen 2 at 4⅓, 95°C, 18s pulse intervals + warning
+// Returns: Ode Gen 2 at 4, 95°C, 18s pulse intervals + warning
 ```
 
 ## Profile Schema

@@ -1,11 +1,14 @@
 /**
- * Grind-setting conversion for Fellow Ode Gen 2.
+ * Grind-setting conversion for Fellow Ode Gen 2 with Aiden.
  *
- * The brewing heuristics are calibrated against a Baratza Encore (40-step
- * dial), so we convert from Encore to Ode Gen 2 using linear interpolation
- * between two anchor points (Encore 12 → Ode 4, Encore 20 → Ode 7).
+ * Based on Fellow's official Aiden grind recommendations:
+ * - Batch basket (flat-bottom): Setting 8-10 (medium-coarse, like rough sea salt)
+ * - Cone/V60: Setting 4-5 (medium, finer than batch)
  *
- * Ode Gen 2 dial moves in 1/3 steps (⅓, ⅔).
+ * Ode Gen 2 dial: 1 (finest) to 11 (coarsest) with 1/3 step increments (⅓, ⅔).
+ *
+ * Encore reference scale maintained for compatibility, but mapped to verified
+ * Fellow Ode Gen 2 settings for Aiden batch brewing.
  */
 
 export interface GrinderMatch {
@@ -24,8 +27,12 @@ function thirds(v: number): string {
 }
 
 const GRINDER_NAME = "Fellow Ode Gen 2";
-const ODE_LO = 4;  // Encore 12 equivalent
-const ODE_HI = 7;  // Encore 20 equivalent
+// Updated anchor points based on Fellow's Aiden recommendations:
+// Encore 13-14 (cone) → Ode 4-5, Encore 15-16 (batch) → Ode 8-9
+const ODE_BATCH_LO = 8;    // Encore 15 → Ode 8 (batch basket)
+const ODE_BATCH_HI = 9;    // Encore 16 → Ode 9 (batch basket)
+const ODE_CONE_LO = 4;     // Encore 13 → Ode 4 (cone basket)
+const ODE_CONE_HI = 5;     // Encore 14 → Ode 5 (cone basket)
 
 export const SUPPORTED_GRINDERS = [GRINDER_NAME];
 
@@ -34,9 +41,20 @@ export const SUPPORTED_GRINDERS = [GRINDER_NAME];
  * Always returns a result (no longer nullable since only one grinder is supported).
  */
 export function convertGrind(encoreSetting: number): GrinderMatch {
-  // Linear interpolation between Encore-12 and Encore-20 anchors
-  const t = (encoreSetting - 12) / 8;
-  const value = ODE_LO + t * (ODE_HI - ODE_LO);
+  // Direct mapping based on Fellow's verified Aiden settings
+  // Encore 13-14 (cone) or 15-16 (batch)
+  let value: number;
+
+  if (encoreSetting <= 14) {
+    // Cone basket range (Encore 13-14 → Ode 4-5)
+    const t = (encoreSetting - 13) / 1;
+    value = ODE_CONE_LO + t * (ODE_CONE_HI - ODE_CONE_LO);
+  } else {
+    // Batch basket range (Encore 15-16 → Ode 8-9)
+    const t = (encoreSetting - 15) / 1;
+    value = ODE_BATCH_LO + t * (ODE_BATCH_HI - ODE_BATCH_LO);
+  }
+
   return {
     name: GRINDER_NAME,
     setting: thirds(value)
