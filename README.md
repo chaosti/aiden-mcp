@@ -13,7 +13,6 @@ This fork is optimized for:
 - ⚙️ **Fellow Ode Gen 2** grinder with stock 64mm flat burrs (only supported grinder, 0.1 increments)
 - 🏺 **Batch basket** brewing (default, with cone basket option)
 - ☀️ **Light to medium roasts** (dark roasts trigger warnings)
-- 🚫 **No anaerobic/co-ferment** coffees (warnings added)
 
 ### Key Differences from Original
 
@@ -115,7 +114,7 @@ brewing_guidelines({
   process: "washed",
   elevation: "1800m"
 })
-// Returns: Ode Gen 2 (stock burrs) at 8, 94°C, 28s pulse intervals
+// Returns: Ode Gen 2 (stock burrs) at 8.1, 94°C, 28s pulse intervals
 ```
 
 ### Cone Basket (Experimental)
@@ -125,7 +124,7 @@ brewing_guidelines({
   process: "natural",
   basket_type: "cone"
 })
-// Returns: Ode Gen 2 (stock burrs) at 5⅓, 96°C, 18s pulse intervals + warning
+// Returns: Ode Gen 2 (stock burrs) at 5.2, 95°C, 18s pulse intervals + warning
 ```
 
 ## Profile Schema
