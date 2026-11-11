@@ -4,7 +4,7 @@ compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
 # Custom domain attached after first deploy via:
-# CF dashboard → Workers & Pages → aiden-mcp → Settings → Domains & Routes → Add custom domain → aidenmcp.ravenhoward.org
+# CF dashboard → Workers & Pages → aiden-mcp → Settings → Domains & Routes → Add custom domain → <your domain>
 # (or via wrangler.toml routes block, but dashboard is simpler the first time)
 
 [observability]
@@ -23,7 +23,7 @@ crons = ["0 * * * *"]
 mode = "smart"
 
 # OAuth state: client registrations, auth codes, access tokens.
-# Auth codes have 10min TTL, access tokens 1hr, client registrations long-lived.
+# Auth codes have 10min TTL, access tokens track the Fellow JWT expiry (≤30d), refresh tokens and client registrations 90d.
 # Nothing in here is a Fellow password — only short-lived JWTs Fellow itself issues.
 [[kv_namespaces]]
 binding = "AIDEN_OAUTH"

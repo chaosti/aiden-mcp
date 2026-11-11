@@ -327,7 +327,7 @@ function renderSignInHtml(q: AuthorizeQuery, errorMessage?: string): string {
         Only the resulting Fellow JWT (which Fellow itself issues) is briefly cached so this server can call Fellow on your behalf.
         <br /><br />
         Unofficial — not affiliated with Fellow Industries.
-        <a href="https://github.com/ravenintheforrest/aiden-mcp">View source</a>.
+        <a href="https://github.com/chaosti/aiden-mcp">View source</a>.
       </div>
     </div>
   </div>

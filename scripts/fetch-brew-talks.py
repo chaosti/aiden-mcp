@@ -24,7 +24,7 @@ from pathlib import Path
 SITE = "https://fellowproducts.com"
 SITEMAP = SITE + "/tools/sitemap"
 SHARED_API = "https://l8qtmnc692.execute-api.us-west-2.amazonaws.com/v1/shared/{bid}"
-UA = {"User-Agent": "Mozilla/5.0 (aiden-mcp dataset refresh; github.com/ravenintheforrest/aiden-mcp)"}
+UA = {"User-Agent": "Mozilla/5.0 (aiden-mcp dataset refresh; github.com/chaosti/aiden-mcp)"}
 OUT = Path(__file__).resolve().parent.parent / "data" / "brew-talks-profiles.csv"
 
 

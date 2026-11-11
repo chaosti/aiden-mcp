@@ -1,7 +1,7 @@
 # Manual deploy to Cloudflare Workers.
 #
 # Exists because `wrangler login` needs a browser callback to localhost, which
-# a headless box (ravelab) can't satisfy. This runs the deploy on a GitHub
+# a headless box can't satisfy. This runs the deploy on a GitHub
 # runner using an API token instead, so it needs no terminal OAuth at all.
 #
 # Trigger: Actions tab -> "Deploy to Cloudflare Workers" -> "Run workflow".
@@ -46,9 +46,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
+      # Set repo variable WORKER_URL (e.g. https://aiden-mcp.<you>.workers.dev)
+      # under Settings -> Secrets and variables -> Actions -> Variables.
       - name: Report live version
+        if: ${{ vars.WORKER_URL != '' }}
         run: |
           sleep 5
           echo "Live version:"
-          curl -sS --retry 3 --retry-delay 3 https://aidenmcp.ravenhoward.org/health \
+          curl -sS --retry 3 --retry-delay 3 "${{ vars.WORKER_URL }}/health" \
             | grep -o '"version":"[^"]*"'

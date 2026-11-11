@@ -8,8 +8,8 @@
  *   - Streamable HTTP MCP transport at /mcp
  *   - OAuth 2.0 (auth code + PKCE, RFC 6749 + 7636) at /oauth/*
  *   - Discovery metadata at /.well-known/* (RFC 9728 + 8414)
- *   - Per-user Fellow auth: user signs in once, JWT cached for 1 hour
- *   - Stateless beyond short-lived KV records (codes ≤10min, tokens ≤1h)
+ *   - Per-user Fellow auth: user signs in once, JWT refreshed via Fellow refresh token
+ *   - Stateless beyond short-lived KV records (codes ≤10min, access tokens track Fellow JWT exp, refresh ≤90d)
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";

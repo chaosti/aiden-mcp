@@ -1,10 +1,11 @@
 /**
  * KV storage helpers for OAuth state.
  *
- * Three categories of records, each with appropriate TTLs:
+ * Four categories of records, each with appropriate TTLs:
  *   client:<client_id>   → registered client metadata (90 days)
  *   code:<code>          → auth-code state pre-token-exchange (10 minutes)
- *   token:<access_token> → access-token state with Fellow JWT (1 hour)
+ *   token:<access_token> → access-token state with Fellow JWT (until JWT exp, ≤30 days)
+ *   refresh:<token>      → Fellow refresh token (90 days)
  *
  * IMPORTANT: We never store Fellow passwords. Only the JWT Fellow itself
  * issues after we successfully authenticate the user is persisted, and
