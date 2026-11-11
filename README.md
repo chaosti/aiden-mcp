@@ -33,7 +33,7 @@ This fork is optimized for:
 |---|---|---|
 | `brewing_guidelines` | none | **Personalized brewing profiles** optimized for milk-forward batch brewing. Returns principles and starting recipe with Fellow Ode Gen 2 grind settings (8.0-8.2 batch, 5.0-5.3 cone), dynamic ratio (1:14-1:16), and moderate temps (94-96°C) |
 | `flash_brew` | none | Plan Japanese iced coffee with automatic ice/water split calculation. Uses Ode 5.0 grind setting optimized for flash brewing |
-| `list_devices` | OAuth | List every Aiden on the account (name, id, slot usage) |
+| `list_devices` | OAuth | List Aidens on the account (name, id, slot usage); also verifies the connection |
 | `list_profiles` | OAuth | List brew profiles (all Aidens, or one with `device`) |
 | `create_profile` | OAuth | Push new profile to an Aiden, get `brew.link` URL |
 | `update_profile` | OAuth | Edit existing profile |
@@ -44,7 +44,6 @@ This fork is optimized for:
 | `create_schedule` | OAuth | Schedule recurring brew |
 | `delete_schedule` | OAuth | Remove scheduled brew |
 | `toggle_schedule` | OAuth | Pause/resume schedule |
-| `get_device_info` | OAuth | Verify connection + slot usage |
 
 **Note:** This personalized version focuses on brewing profiles from coffee photos/descriptions you provide to Claude, rather than URL scraping. The `fetch_coffee_details` tool has been removed to streamline the workflow.
 
@@ -52,7 +51,7 @@ This fork is optimized for:
 
 One Fellow account can own several Aidens (e.g. one in Canada, one in Italy). Name them in the Fellow app so they're easy to target — the tools match names case-insensitively, or take the device id from `list_devices`.
 
-- **Reading** (`list_profiles`, `list_schedules`, `get_device_info`): omit `device` to see every Aiden.
+- **Reading** (`list_devices`, `list_profiles`, `list_schedules`): omit `device` to see every Aiden.
 - **Changing** (create/update/delete/share profiles, create/delete/toggle schedules): `device` is **required** when the account has more than one Aiden — the call errors and lists the names rather than guessing. With a single Aiden it's optional, as before.
 - **Profile ids are per-Aiden.** The same recipe is `p3` on one brewer and `p7` on the other, so use `list_profiles` for the same device before scheduling.
 - **Schedules use each Aiden's own local time.**

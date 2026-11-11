@@ -49,7 +49,7 @@ import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 import { handleCorsPreflightRequest, addCorsHeaders } from "./oauth/cors.js";
 
-const VERSION = "2.0.1";
+const VERSION = "2.0.2";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -109,35 +109,37 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   const devicesFor = async (client: FellowClient, device?: string): Promise<FellowDevice[]> =>
     device ? [await client.resolveDevice(device)] : client.listDevices();
 
-  const deviceSummary = async (client: FellowClient, d: FellowDevice): Promise<string> => {
-    const profiles = await client.listProfiles(d.id);
-    const customCount = profiles.filter((p) => categorize(p) === "custom").length;
-    return (
-      `Device: ${deviceLabel(d)}\n` +
-      `ID: ${d.id}\n` +
-      `Custom profile slots: ${customCount}/${CUSTOM_PROFILE_CAP}\n` +
-      `Total profiles visible (incl. stock + shared): ${profiles.length}`
-    );
-  };
-
   // ============================================================
   // list_devices
   // ============================================================
   server.tool(
     "list_devices",
-    "List every Aiden on the Fellow account with its name, id and custom-slot usage. Pass a name (or id) from here as `device` to target one brewer in the other tools.",
-    {},
-    async () => {
+    "List the Aidens on the Fellow account with each one's name, id and custom-slot usage. Pass a name (or id) from here as `device` to target one brewer in the other tools. Lightweight, so also useful for verifying credentials work before heavier operations. Shows every Aiden unless `device` is given.",
+    { device: readDeviceParam },
+    async ({ device }) => {
       const client = await getClient();
-      const devices = await client.listDevices();
-      const blocks = await Promise.all(devices.map((d) => deviceSummary(client, d)));
-      let text = `${devices.length} Aiden${devices.length === 1 ? "" : "s"} on this account:\n\n` + blocks.join("\n\n");
-
-      const names = devices.map((d) => d.displayName?.trim().toLowerCase()).filter(Boolean);
-      if (new Set(names).size < names.length) {
-        text +=
-          "\n\n⚠ Two or more Aidens share a name, so they can only be targeted by id. " +
-          "Suggest the user rename them in the Fellow app (e.g. 'Canada' and 'Italy').";
+      const devices = await devicesFor(client, device);
+      const blocks = await Promise.all(
+        devices.map(async (d) => {
+          const profiles = await client.listProfiles(d.id);
+          const customCount = profiles.filter((p) => categorize(p) === "custom").length;
+          return (
+            `Device: ${deviceLabel(d)}\n` +
+            `ID: ${d.id}\n` +
+            `Custom profile slots: ${customCount}/${CUSTOM_PROFILE_CAP}\n` +
+            `Total profiles visible (incl. stock + shared): ${profiles.length}`
+          );
+        }),
+      );
+      let text = blocks.join("\n\n");
+      if (!device) {
+        text = `${devices.length} Aiden${devices.length === 1 ? "" : "s"} on this account:\n\n${text}`;
+        const names = devices.map((d) => d.displayName?.trim().toLowerCase()).filter(Boolean);
+        if (new Set(names).size < names.length) {
+          text +=
+            "\n\n⚠ Two or more Aidens share a name, so they can only be targeted by id. " +
+            "Suggest the user rename them in the Fellow app (e.g. 'Canada' and 'Italy').";
+        }
       }
       return { content: [{ type: "text", text }] };
     },
@@ -807,21 +809,6 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       lines.push("", `Results (${results.length - failures} ok, ${failures} failed):`, ...results.map((r) => `  ${r}`));
       if (drifted.length) lines.push("", driftWarning(drifted, `these on ${dst}`));
       return done(failures === results.length);
-    },
-  );
-
-  // ============================================================
-  // get_device_info
-  // ============================================================
-  server.tool(
-    "get_device_info",
-    "Get info about your Aiden brewer (name, id, profile count, slot usage). Lightweight call useful for verifying credentials work before doing heavier operations. Shows every Aiden unless `device` is given.",
-    { device: readDeviceParam },
-    async ({ device }) => {
-      const client = await getClient();
-      const devices = await devicesFor(client, device);
-      const blocks = await Promise.all(devices.map((d) => deviceSummary(client, d)));
-      return { content: [{ type: "text", text: blocks.join("\n\n") }] };
     },
   );
 
