@@ -44,7 +44,7 @@ import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 import { handleCorsPreflightRequest, addCorsHeaders } from "./oauth/cors.js";
 
-const VERSION = "1.2.0";
+const VERSION = "2.0.0";
 
 /** Recipe fields (everything but the title) that differ, as "field target → source". */
 function settingsDiff(source: FellowProfile, target: FellowProfile): string[] {

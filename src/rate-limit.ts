@@ -59,6 +59,31 @@ export async function checkRateLimit(
 }
 
 /**
+ * Failure-only limiting, for paths where every request authenticates (so
+ * counting successes would throttle normal use). Check before the attempt,
+ * record after it fails.
+ */
+export async function isRateLimited(env: Env, key: string): Promise<boolean> {
+  const record = await env.AIDEN_OAUTH.get(`${RATE_LIMIT_PREFIX}${key}`);
+  return (record ? parseInt(record, 10) : 0) >= MAX_ATTEMPTS;
+}
+
+export async function recordFailedAttempt(env: Env, key: string): Promise<void> {
+  const rlKey = `${RATE_LIMIT_PREFIX}${key}`;
+  const record = await env.AIDEN_OAUTH.get(rlKey);
+  const current = record ? parseInt(record, 10) : 0;
+  await env.AIDEN_OAUTH.put(rlKey, String(current + 1), { expirationTtl: WINDOW_SECONDS });
+}
+
+/**
+ * Generate rate limit key for header/Basic credential auth on /mcp. Per IP
+ * only, so rotating through emails doesn't reset the budget.
+ */
+export function headerAuthRateLimitKey(ip: string): string {
+  return `headerauth:${ip}`;
+}
+
+/**
  * Generate rate limit key for authentication attempts.
  * Combines email hash and IP for granular limiting.
  */

@@ -1,5 +1,6 @@
 import { FellowClient, FellowApiError } from "./fellow-api.js";
 import { Env, getAccessToken } from "./oauth/kv.js";
+import { isRateLimited, recordFailedAttempt, headerAuthRateLimitKey } from "./rate-limit.js";
 
 /**
  * Tag types so the worker can decide whether a missing/invalid auth should
@@ -21,7 +22,10 @@ export class ExpiredTokenError extends FellowApiError {
 /**
  * Per-request auth for the /mcp resource endpoint.
  *
- * Three credential paths supported, in priority order:
+ * Three credential paths, in priority order. Only (1) is on by default;
+ * (2) and (3) need ALLOW_HEADER_AUTH="true" because every request logs in
+ * to Fellow with them, which made the Worker usable as an open proxy for
+ * guessing Fellow passwords. When enabled, failures are rate-limited per IP.
  *
  *   1. Authorization: Bearer <oauth-access-token>
  *      — issued by our own /oauth/token endpoint after the user signed in
@@ -56,6 +60,10 @@ export async function clientFromHeaders(headers: Headers, env: Env): Promise<Fel
     );
   }
 
+  if (env.ALLOW_HEADER_AUTH !== "true") {
+    throw new NoCredentialsError("No credentials. Connect with OAuth (sign in through your MCP client).");
+  }
+
   // 2. Try X-Fellow-* headers
   let email = headers.get("X-Fellow-Email") ?? headers.get("x-fellow-email");
   let password = headers.get("X-Fellow-Password") ?? headers.get("x-fellow-password");
@@ -81,7 +89,16 @@ export async function clientFromHeaders(headers: Headers, env: Env): Promise<Fel
       "No credentials. Use OAuth (recommended for Claude.ai), or send X-Fellow-Email + X-Fellow-Password headers.",
     );
   }
+  const rateLimitKey = headerAuthRateLimitKey(headers.get("CF-Connecting-IP") ?? "unknown");
+  if (await isRateLimited(env, rateLimitKey)) {
+    throw new FellowApiError("Too many failed sign-in attempts. Try again in a few minutes.", 429);
+  }
   const client = new FellowClient(email, password);
-  await client.authenticate();
+  try {
+    await client.authenticate();
+  } catch (err) {
+    await recordFailedAttempt(env, rateLimitKey);
+    throw err;
+  }
   return client;
 }

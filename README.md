@@ -185,11 +185,19 @@ This fork includes comprehensive security hardening for OAuth endpoints:
 - **Reduced Error Verbosity**: Minimized information disclosure in error messages
 - **KV Namespace Isolation**: Self-hosters must create their own KV namespace for security isolation
 
+**v2.0.0 additions:**
+
+- **Redirect URI allowlist**: only Claude's connector callback (`https://claude.ai/api/mcp/auth_callback`, `https://claude.com/api/mcp/auth_callback`) and loopback addresses (`localhost`, `127.0.0.1`, `[::1]`, for local clients like Claude Code). Enforced at registration *and* at sign-in, so older stored registrations can't redirect elsewhere. Stops a third party registering their own redirect and phishing a sign-in through your real page.
+- **Header auth off by default**: `X-Fellow-Email`/`X-Fellow-Password` and HTTP Basic on `/mcp` are disabled unless you set `ALLOW_HEADER_AUTH="true"` (`npx wrangler secret put ALLOW_HEADER_AUTH`). When enabled, failed logins are limited to 10 per IP per 5 minutes.
+- **Sign-in page hardening**: `Content-Security-Policy` (`frame-ancestors 'none'`), `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, `no-store`.
+
 These protections defend against:
 - Brute force attacks on Fellow credentials
 - Token enumeration and abuse
 - Client registration spam
-- Malicious redirect URIs
+- Malicious redirect URIs and sign-in phishing via third-party client registrations
+- Using the Worker as a proxy to guess Fellow passwords
+- Clickjacking the sign-in form
 - Unauthorized cross-origin access
 - Information disclosure through verbose errors
 

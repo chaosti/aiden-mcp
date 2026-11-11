@@ -23,6 +23,11 @@ export interface Env {
   CANARY_FELLOW_PASSWORD?: string;
   CANARY_WEBHOOK_URL?: string;
   CANARY_WRITE?: string;
+  /**
+   * "true" re-enables X-Fellow-Email/Password and Basic auth on /mcp (off by
+   * default — see src/auth.ts). Set with `wrangler secret put` or [vars].
+   */
+  ALLOW_HEADER_AUTH?: string;
 }
 
 // ============================================================

@@ -8,7 +8,7 @@ Unofficial **MCP server for the Fellow Aiden coffee brewer**. Lets Claude push/l
 - **Deploys to Cloudflare Workers** (`npm run deploy`, or the manual `Deploy to Cloudflare Workers` GitHub Action). Pushing to `main` does not deploy. There is no long-running local server; the Worker is the runtime.
 - **State:** none persistent. Cloudflare KV (`AIDEN_OAUTH`) holds only short-lived records — auth codes ≤10min, access tokens until the Fellow JWT expires (≤30d), refresh tokens + client regs ≤90d, rate-limit counters 5min. **Only Fellow-issued JWTs are stored, never the Fellow password.**
 - **Secrets:** Cloudflare Worker secrets (`npx wrangler secret put …`) — canary account creds + webhook. Local dev vars in `.dev.vars` (untracked). Never in-repo.
-- **Auth model:** OAuth 2.0 auth-code + PKCE, or `X-Fellow-Email`/`X-Fellow-Password` headers. Password reaches server once at `/oauth/authorize`, exchanged for a Fellow JWT, then discarded.
+- **Auth model:** OAuth 2.0 auth-code + PKCE. Password reaches server once at `/oauth/authorize`, exchanged for a Fellow JWT, then discarded. Redirect URIs are allowlisted to Claude's callback + loopback (`src/oauth/redirect.ts`). `X-Fellow-Email`/`X-Fellow-Password` and Basic auth on `/mcp` are **off** unless `ALLOW_HEADER_AUTH="true"` (then failure-rate-limited per IP).
 - **Multiple Aidens** on one Fellow account (Canada + Italy). Writes require `device` when there's more than one; reads cover all. `sync_profiles` copies profiles one-way, matched by title (ids are per-device slots), never deletes.
 - **Profile data** (temperature/ratio priors) is harvested, not folk wisdom — see `data/`.
 
@@ -23,7 +23,8 @@ Unofficial **MCP server for the Fellow Aiden coffee brewer**. Lets Claude push/l
 - `src/flash-brew.ts` — `flash_brew`: Japanese iced coffee plan + dose workaround.
 - `src/canary.ts` — hourly cron probe of Fellow API for drift; fingerprinted alerts to webhook.
 - `src/oauth/` — OAuth flow: `authorize.ts`, `token.ts`, `register.ts` (dynamic client reg), `discovery.ts` (well-known metadata), `cors.ts` (claude.ai origin allowlist), `kv.ts` (KV helpers).
-- `src/rate-limit.ts` — KV-backed rate limiting for OAuth endpoints (10 attempts / 5 min).
+- `src/oauth/redirect.ts` — redirect URI allowlist, enforced at register and authorize.
+- `src/rate-limit.ts` — KV-backed rate limiting for OAuth endpoints (10 attempts / 5 min) and failed header-auth logins.
 - `data/` — profile datasets (`brew-talks-profiles.csv` = primary 145, `fellow-drops-profiles.csv`) + `README.md`.
 - `scripts/` — `fetch-brew-talks.py`, `drops-stats.py` — regenerate/analyze the datasets.
 - `wrangler.toml` — Worker config: KV binding, hourly cron trigger, custom domain notes.

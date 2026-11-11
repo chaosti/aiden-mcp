@@ -1,7 +1,7 @@
 # Tasks — aiden-mcp
 
 ## Now
-- **Verify multi-Aiden (v1.2.0) against real hardware** once the Italy Aiden is linked: rename both brewers in the Fellow app (e.g. "Canada" / "Italy"), run `list_devices`, then a `sync_profiles` dry run, then a real sync of one disposable profile. So far only tested against a fake Fellow API.
+- **Verify multi-Aiden (v2.0.0) against real hardware** once the Italy Aiden is linked: rename both brewers in the Fellow app (e.g. "Canada" / "Italy"), run `list_devices`, then a `sync_profiles` dry run, then a real sync of one disposable profile. So far only tested against a fake Fellow API.
 
 ## Next
 - Confirm the **Brew Talks 145-profile dataset** is fully wired into `brewing_guidelines` temperature priors, not just the older 69-profile Fellow Drops set.

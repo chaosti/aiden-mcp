@@ -10,6 +10,7 @@
 
 import { Env, putClient, generateRandomToken } from "./kv.js";
 import { checkRateLimit, registerRateLimitKey } from "../rate-limit.js";
+import { isAllowedRedirectUri } from "./redirect.js";
 
 interface RegistrationRequest {
   redirect_uris?: string[];
@@ -45,36 +46,14 @@ export async function handleRegister(request: Request, env: Env): Promise<Respon
     return jsonError("invalid_redirect_uri", "redirect_uris is required", 400);
   }
 
-  // Basic validation: each redirect_uri must be a parseable URL with https://
-  // (or http://localhost for development). We're permissive — Claude provides
-  // its own callback URI, not us.
+  // Only Claude's callback and loopback are accepted — see redirect.ts.
   for (const uri of body.redirect_uris) {
-    try {
-      const parsed = new URL(uri);
-
-      // Protocol check: must be https or localhost
-      if (parsed.protocol !== "https:" && !uri.startsWith("http://localhost")) {
-        return jsonError("invalid_redirect_uri", `Redirect URI must be https or localhost: ${uri}`, 400);
-      }
-
-      // Prevent suspicious patterns that could bypass validation
-      if (uri.includes('javascript:') || uri.includes('data:') || uri.includes('file:')) {
-        return jsonError("invalid_redirect_uri", `Invalid redirect URI scheme: ${uri}`, 400);
-      }
-
-      // For https URIs, validate hostname structure
-      if (parsed.protocol === "https:") {
-        if (!parsed.hostname.match(/^[\w\-\.]+$/)) {
-          return jsonError("invalid_redirect_uri", `Invalid hostname in redirect URI: ${uri}`, 400);
-        }
-
-        // Prevent IP addresses (require domain names for https)
-        if (parsed.hostname.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
-          return jsonError("invalid_redirect_uri", `HTTPS redirect URIs must use domain names, not IP addresses: ${uri}`, 400);
-        }
-      }
-    } catch {
-      return jsonError("invalid_redirect_uri", `Invalid redirect URI: ${uri}`, 400);
+    if (typeof uri !== "string" || !isAllowedRedirectUri(uri)) {
+      return jsonError(
+        "invalid_redirect_uri",
+        "Redirect URI not allowed: only Claude's connector callback or a loopback (localhost) address",
+        400,
+      );
     }
   }
 

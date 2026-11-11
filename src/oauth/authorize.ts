@@ -20,6 +20,7 @@ import {
   sha256Hex,
 } from "./kv.js";
 import { checkRateLimit, authRateLimitKey } from "../rate-limit.js";
+import { isAllowedRedirectUri } from "./redirect.js";
 
 interface AuthorizeQuery {
   response_type?: string;
@@ -53,7 +54,13 @@ async function validateAuthorizeRequest(
   if (!client) {
     return { ok: false, status: 400, message: `Unknown client_id (register first): ${q.client_id}` };
   }
-  if (!q.redirect_uri || !client.redirect_uris.includes(q.redirect_uri)) {
+  // Allowlist re-checked here, not just at registration, so client records
+  // stored before the allowlist existed can't still redirect elsewhere.
+  if (
+    !q.redirect_uri ||
+    !client.redirect_uris.includes(q.redirect_uri) ||
+    !isAllowedRedirectUri(q.redirect_uri)
+  ) {
     return {
       ok: false,
       status: 400,
@@ -81,7 +88,7 @@ export async function handleAuthorizeGet(url: URL, env: Env): Promise<Response> 
   }
   return new Response(renderSignInHtml(q), {
     status: 200,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: SIGN_IN_HEADERS,
   });
 }
 
@@ -172,6 +179,21 @@ export async function handleAuthorizePost(request: Request, env: Env): Promise<R
 // ============================================================
 // HTML rendering
 // ============================================================
+
+/**
+ * The sign-in page collects a Fellow password, so it must not be framable
+ * (clickjacking) and needs nothing beyond its own inline styles. No
+ * form-action directive: browsers apply it to the post-submit 303 redirect
+ * to Claude's callback, which would break sign-in.
+ */
+const SIGN_IN_HEADERS: HeadersInit = {
+  "Content-Type": "text/html; charset=utf-8",
+  "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'",
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Cache-Control": "no-store",
+};
 
 function renderSignInHtml(q: AuthorizeQuery, errorMessage?: string): string {
   const fields = ["response_type", "client_id", "redirect_uri", "scope", "state", "code_challenge", "code_challenge_method"]
@@ -338,7 +360,7 @@ function renderSignInHtml(q: AuthorizeQuery, errorMessage?: string): string {
 function renderSignInError(q: AuthorizeQuery, message: string): Response {
   return new Response(renderSignInHtml(q, message), {
     status: 401,
-    headers: { "Content-Type": "text/html; charset=utf-8" },
+    headers: SIGN_IN_HEADERS,
   });
 }
 
