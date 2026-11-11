@@ -96,7 +96,6 @@ export async function handleAuthorizeGet(url: URL, env: Env): Promise<Response> 
 // POST /oauth/authorize — validate creds, issue code, redirect
 // ============================================================
 export async function handleAuthorizePost(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
   const formData = await request.formData();
 
   const q: AuthorizeQuery = {

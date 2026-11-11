@@ -18,8 +18,7 @@ Unofficial **MCP server for the Fellow Aiden coffee brewer**. Lets Claude push/l
 - `src/auth.ts` — Fellow `/auth/login` → JWT.
 - `src/fellow-schemas.ts` — zod contracts for Fellow API responses (drift detection).
 - `src/validation.ts` — client-side profile validation before write (clear errors, not 400s).
-- `src/brewing-guidelines.ts` — `brewing_guidelines`: personalized heuristics (batch basket default, cone experimental, ratio 1:14–1:16, 94–96°C) + starting recipe.
-- `src/grinders.ts` — Fellow Ode Gen 2 grind ranges (batch 8.0–8.2, cone 5.0–5.3). Only supported grinder.
+- `src/brewing-guidelines.ts` — `brewing_guidelines`: personalized heuristics (batch basket default, cone experimental, ratio 1:14–1:16, 94–96°C, Ode Gen 2 grind: batch 8.0–8.2, cone 5.0–5.3) + starting recipe.
 - `src/flash-brew.ts` — `flash_brew`: Japanese iced coffee plan + dose workaround.
 - `src/canary.ts` — hourly cron probe of Fellow API for drift; fingerprinted alerts to webhook.
 - `src/oauth/` — OAuth flow: `authorize.ts`, `token.ts`, `register.ts` (dynamic client reg), `discovery.ts` (well-known metadata), `cors.ts` (claude.ai origin allowlist), `kv.ts` (KV helpers).
@@ -40,7 +39,7 @@ Unofficial **MCP server for the Fellow Aiden coffee brewer**. Lets Claude push/l
 | Device targeting / profile sync | `src/fellow-api.ts` (`resolveDevice`, `writableProfile`), `src/index.ts` (`sync_profiles`) | brewing files, `oauth/` |
 | Fellow API call broke / new endpoint | `src/fellow-api.ts`, `src/auth.ts`, `src/fellow-schemas.ts` | brewing files |
 | Profile rejected / validation errors | `src/validation.ts`, `README.md` (schema table) | `oauth/` |
-| Brewing heuristics / recipe output | `src/brewing-guidelines.ts`, `src/grinders.ts`, `data/README.md` | `oauth/`, `fellow-api.ts` |
+| Brewing heuristics / recipe output | `src/brewing-guidelines.ts`, `data/README.md` | `oauth/`, `fellow-api.ts` |
 | Flash / iced brew math | `src/flash-brew.ts` | oauth, api |
 | OAuth / connector sign-in / rate limits | `src/oauth/*`, `src/rate-limit.ts`, `src/index.ts` (routing) | brewing files |
 | API drift alerts | `src/canary.ts`, `src/fellow-schemas.ts`, `wrangler.toml` (cron) | tool files |

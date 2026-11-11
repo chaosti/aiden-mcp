@@ -35,7 +35,7 @@ const tempArray = z.preprocess(
   z.array(tempSchema),
 );
 
-export const profileInputSchema = z.object({
+const profileFields = z.object({
   title: z
     .string()
     .min(1, "Title required")
@@ -50,27 +50,41 @@ export const profileInputSchema = z.object({
   // with a fine grind, and above 1:20 there's no brewing use case.
   ratio: z.coerce.number().min(8, "Ratio must be ≥ 8 (1:8)").max(20, "Ratio must be ≤ 20 (1:20)"),
 
-  bloomEnabled: boolish.default(true),
+  bloomEnabled: boolish,
   bloomRatio: z.coerce.number().min(1).max(3),
   bloomDuration: z.coerce.number().int().min(1).max(120),
   bloomTemperature: tempSchema,
 
-  ssPulsesEnabled: boolish.default(true),
+  ssPulsesEnabled: boolish,
   ssPulsesNumber: z.coerce.number().int().min(1).max(10),
   ssPulsesInterval: z.coerce.number().int().min(5).max(60),
   ssPulseTemperatures: tempArray.refine((a) => a.length >= 1 && a.length <= 10, {
     message: "1–10 SS pulse temperatures",
   }),
 
-  batchPulsesEnabled: boolish.default(true),
+  batchPulsesEnabled: boolish,
   batchPulsesNumber: z.coerce.number().int().min(1).max(10),
   batchPulsesInterval: z.coerce.number().int().min(5).max(60),
   batchPulseTemperatures: tempArray.refine((a) => a.length >= 1 && a.length <= 10, {
     message: "1–10 batch pulse temperatures",
   }),
 
+  profileType: z.coerce.number().int(),
+});
+
+export const profileInputSchema = profileFields.extend({
+  bloomEnabled: boolish.default(true),
+  ssPulsesEnabled: boolish.default(true),
+  batchPulsesEnabled: boolish.default(true),
   profileType: z.coerce.number().int().default(0),
 });
+
+/**
+ * update_profile: every field optional and WITHOUT defaults — zod applies
+ * defaults inside .partial(), which would overwrite stored values the caller
+ * never mentioned.
+ */
+export const profileUpdateSchema = profileFields.partial();
 
 export type ProfileInput = z.infer<typeof profileInputSchema>;
 

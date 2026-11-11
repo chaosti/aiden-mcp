@@ -123,12 +123,9 @@ async function handleRefreshGrant(body: FormData, env: Env): Promise<Response> {
   // Use the stored (expired) access JWT + Fellow's refresh token to mint a fresh JWT
   let fresh;
   try {
-    console.log("Refresh grant: calling Fellow /auth/refresh-token");
     fresh = await FellowClient.refresh(record.fellow_jwt, record.fellow_refresh);
-    console.log("Refresh grant: SUCCESS — new Fellow JWT issued");
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "unknown";
-    console.log("Refresh grant: FAILED —", msg);
+    console.log("Refresh grant failed:", err instanceof Error ? err.message : "unknown");
     // Fellow rejected the refresh — it's dead. Drop ours and force re-auth.
     await deleteRefreshToken(env, refresh_token);
     return jsonError("invalid_grant", "Fellow session expired. Re-authorize.", 400);

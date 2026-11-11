@@ -17,7 +17,13 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { z } from "zod";
 
 import { clientFromHeaders, NoCredentialsError, ExpiredTokenError } from "./auth.js";
-import { profileInputSchema, checkPulseConsistency, boolish } from "./validation.js";
+import {
+  profileInputSchema,
+  profileUpdateSchema,
+  checkPulseConsistency,
+  boolish,
+  ProfileInput,
+} from "./validation.js";
 import {
   FellowApiError,
   FellowClient,
@@ -32,7 +38,6 @@ import {
 import { diffProfileEcho } from "./fellow-schemas.js";
 import { brewingGuidelines } from "./brewing-guidelines.js";
 import { flashBrewPlan } from "./flash-brew.js";
-import { SUPPORTED_GRINDERS } from "./grinders.js";
 import { runCanary } from "./canary.js";
 import {
   protectedResourceMetadata,
@@ -44,7 +49,18 @@ import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 import { handleCorsPreflightRequest, addCorsHeaders } from "./oauth/cors.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
+
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Loud warning when Fellow's echo of a write doesn't match what was sent. */
+function driftWarning(drift: string[], where: string): string {
+  return (
+    `⚠ IMPORTANT — Fellow saved different values than were sent (possible API change). ` +
+    `Tell the user to verify ${where} in the Fellow app before brewing:\n` +
+    drift.map((d) => `  - ${d}`).join("\n")
+  );
+}
 
 /** Recipe fields (everything but the title) that differ, as "field target → source". */
 function settingsDiff(source: FellowProfile, target: FellowProfile): string[] {
@@ -251,12 +267,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         `Created profile "${created.title}" on ${deviceLabel(target)} (id: ${created.id}).\n` +
         `The profile is now on that Aiden — walk over and brew it directly, no extra step needed.\n\n` +
         `brew.link (optional, for sharing or QR-scanning at the device): ${link}`;
-      if (drift.length) {
-        text +=
-          `\n\n⚠ IMPORTANT — Fellow saved different values than were sent (possible API change). ` +
-          `Tell the user to verify the profile in the Fellow app before brewing:\n` +
-          drift.map((d) => `  - ${d}`).join("\n");
-      }
+      if (drift.length) text += `\n\n${driftWarning(drift, "the profile")}`;
 
       return {
         content: [{ type: "text", text }],
@@ -276,24 +287,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         .string()
         .min(1)
         .describe("Profile id (e.g. 'p1') or exact case-sensitive title (e.g. 'Mpemba v3')"),
-      title: z.string().min(1).max(50).optional().describe("New title (optional)"),
-      ratio: z.coerce.number().min(8).max(20).optional(),
-      bloomEnabled: boolish.optional(),
-      bloomRatio: z.coerce.number().min(1).max(3).optional(),
-      bloomDuration: z.coerce.number().int().min(1).max(120).optional(),
-      bloomTemperature: z.coerce.number().min(50).max(99).optional(),
-      ssPulsesEnabled: boolish.optional(),
-      ssPulsesNumber: z.coerce.number().int().min(1).max(10).optional(),
-      ssPulsesInterval: z.coerce.number().int().min(5).max(60).optional(),
-      ssPulseTemperatures: z
-        .preprocess((v) => (typeof v === "string" ? JSON.parse(v) : v), z.array(z.coerce.number().min(50).max(99)))
-        .optional(),
-      batchPulsesEnabled: boolish.optional(),
-      batchPulsesNumber: z.coerce.number().int().min(1).max(10).optional(),
-      batchPulsesInterval: z.coerce.number().int().min(5).max(60).optional(),
-      batchPulseTemperatures: z
-        .preprocess((v) => (typeof v === "string" ? JSON.parse(v) : v), z.array(z.coerce.number().min(50).max(99)))
-        .optional(),
+      ...profileUpdateSchema.shape,
     },
     async (input) => {
       const { device, idOrTitle, ...changes } = input;
@@ -317,14 +311,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       const { id, ...body } = merged;
 
       // Sanity: keep pulse counts and temperature arrays consistent
-      const consistencyErrors = checkPulseConsistency({
-        ...body,
-        // zod parsed the optional fields, so set defaults the validator expects
-        bloomEnabled: body.bloomEnabled ?? true,
-        ssPulsesEnabled: body.ssPulsesEnabled ?? true,
-        batchPulsesEnabled: body.batchPulsesEnabled ?? true,
-        profileType: body.profileType ?? 0,
-      } as never);
+      const consistencyErrors = checkPulseConsistency(body as ProfileInput);
       if (consistencyErrors.length) {
         return {
           isError: true,
@@ -350,12 +337,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         `Updated "${updated.title}" on ${deviceLabel(target)} (id: ${existing.id}).\n` +
         `Changed: ${changedFields.length ? changedFields.join(", ") : "(no field changes — title only)"}\n` +
         `Profile id unchanged, so existing brew.link still works.`;
-      if (drift.length) {
-        text +=
-          `\n\n⚠ IMPORTANT — Fellow saved different values than were sent (possible API change). ` +
-          `Tell the user to verify the profile in the Fellow app before brewing:\n` +
-          drift.map((d) => `  - ${d}`).join("\n");
-      }
+      if (drift.length) text += `\n\n${driftWarning(drift, "the profile")}`;
       return {
         content: [{ type: "text", text }],
       };
@@ -438,7 +420,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
     "brewing_guidelines",
     "Get Aiden-specific brewing guidelines tailored to a coffee's characteristics. Optimized for milk-forward batch brewing with Fellow Ode Gen 2 (stock burrs). Returns brewing principles + a starting-point recipe. Use this when user provides coffee details (typically from photos of coffee bags). IMPORTANT: if the user already has a profile made for this exact coffee (Fellow Drops or a roaster-shared profile), do NOT redesign it from these principles — it was dialed by people who tasted this coffee. Adjust it one variable at a time (1–2°C max) toward what the user disliked. Does NOT require Aiden auth.",
     {
-      process: z.string().optional().describe("Process: washed, natural, honey, anaerobic, etc."),
+      process: z.string().optional().describe("Process: washed, natural, honey, etc."),
       roast: z
         .string()
         .optional()
@@ -448,22 +430,11 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       varieties: z.array(z.string()).optional().describe("Varietal names, e.g. ['Bourbon', 'SL28']"),
       elevation: z.string().optional().describe("Elevation, e.g. '1,800–2,000 masl' or '1750m'"),
       tasting_notes: z.array(z.string()).optional().describe("Notes on the bag, e.g. ['fig', 'strawberry', 'honey']"),
-      user_preference_ratio: z
-        .number()
-        .optional()
-        .describe("User's typical ratio (e.g. 15 for 1:15). Defaults to 1:15 washed, 1:16 natural."),
-      grinder: z
-        .string()
-        .default("Fellow Ode Gen 2 (stock burrs)")
-        .optional()
-        .describe(
-          `User's grinder (fixed to Fellow Ode Gen 2 with stock 64mm flat burrs for this setup).`,
-        ),
-      brew_basket: z
+      basket_type: z
         .string()
         .optional()
         .describe(
-          "Only for modded brew chambers: 'v60', 'orea', or 'kalita' if the user has swapped the stock flat-bottom basket for a dripper via an adapter. Omit for a stock Aiden. Adjusts grind and pulse pacing for the different drawdown geometry.",
+          "'batch' (default — rich body, the right choice for milk drinks) or 'cone' (experimental: brighter, lighter body).",
         ),
     },
     async (input) => {
@@ -474,7 +445,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         "Principles:",
         ...guidelines.principles.map((p, i) => `  ${i + 1}. ${p}`),
         "",
-        "Starting-point recipe (BATCH BASKET - adjust based on principles above):",
+        "Starting-point recipe (adjust based on principles above):",
         `  Ratio:   ${guidelines.starting_recipe.ratio}`,
         `  Bloom:   ${guidelines.starting_recipe.bloom}`,
         `  Batch:   ${guidelines.starting_recipe.batch_pulses}`,
@@ -501,7 +472,6 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       total_ratio: z.coerce.number().min(10).max(20).optional().describe("True ratio including ice melt. Default 15 (Counter Culture uses 17, Lance Hedrick 12 — lower = stronger)."),
       ice_fraction: z.coerce.number().min(0.1).max(0.5).optional().describe("Share of total liquid that is ice in the carafe. Default 0.3; published recipes use 0.25-0.33."),
       machine_profile_ratio: z.coerce.number().min(8).max(20).optional().describe("Only set this to brew with an existing profile whose ratio stays as-is — the plan becomes the dose-misreport workaround for that ratio. Omit it (default) for the honest plan, where the profile ratio is set to the true hot-concentrate ratio."),
-      grinder: z.string().optional().describe("User's grinder, to convert the flash-brew grind setting to their dial."),
     },
     async (input) => {
       const plan = flashBrewPlan(input);
@@ -535,10 +505,9 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         if (!schedules.length) {
           return `No scheduled brews on ${deviceLabel(d)}.`;
         }
-        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         const fmt = (s: Record<string, unknown>) => {
           const days = (s.days as boolean[] | undefined)
-            ?.map((on, i) => (on ? dayNames[i] : null))
+            ?.map((on, i) => (on ? DAY_NAMES[i] : null))
             .filter(Boolean)
             .join(",");
           const sec = (s.secondFromStartOfTheDay as number | undefined) ?? 0;
@@ -630,8 +599,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         amountOfWater,
         enabled,
       });
-      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const dayList = days.map((on, i) => (on ? dayNames[i] : null)).filter(Boolean).join(",") || "(no days)";
+      const dayList = days.map((on, i) => (on ? DAY_NAMES[i] : null)).filter(Boolean).join(",") || "(no days)";
       const onlyOneDay = days.filter(Boolean).length === 1;
       const oneShotNote = onlyOneDay
         ? "\n\n⚠ One-shot caveat: This is a recurring weekly schedule with one day enabled. It will fire again next week on the same day. After it fires today, call delete_schedule or toggle_schedule(enabled=false) to prevent that — or remind the user to do so."
@@ -837,14 +805,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       }
 
       lines.push("", `Results (${results.length - failures} ok, ${failures} failed):`, ...results.map((r) => `  ${r}`));
-      if (drifted.length) {
-        lines.push(
-          "",
-          `⚠ IMPORTANT — Fellow saved different values than were sent (possible API change). ` +
-            `Tell the user to verify these on ${dst} in the Fellow app before brewing:`,
-          ...drifted.map((d) => `  - ${d}`),
-        );
-      }
+      if (drifted.length) lines.push("", driftWarning(drifted, `these on ${dst}`));
       return done(failures === results.length);
     },
   );
@@ -879,7 +840,7 @@ export default {
     ctx.waitUntil(runCanary(env));
   },
 
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const origin = `${url.protocol}//${url.host}`;
     const pathname = url.pathname;
@@ -964,22 +925,9 @@ export default {
           );
         }
 
-        // Tools split by whether they need Fellow credentials.
-        // Pure-compute / pure-fetch tools work for anyone — no Fellow account needed.
-        const FELLOW_AUTH_TOOLS = new Set([
-          "list_profiles",
-          "create_profile",
-          "update_profile",
-          "delete_profile",
-          "share_profile",
-          "get_device_info",
-          "list_devices",
-          "sync_profiles",
-          "list_schedules",
-          "create_schedule",
-          "delete_schedule",
-          "toggle_schedule",
-        ]);
+        // Pure-compute tools work without a Fellow account; every other tool
+        // needs credentials (so a newly added tool is protected by default).
+        const PUBLIC_TOOLS = new Set(["brewing_guidelines", "flash_brew"]);
 
         // Inspect the JSON-RPC method without consuming the body
         let needsAuth = false;
@@ -988,7 +936,7 @@ export default {
             const cloned = request.clone();
             const body = (await cloned.json()) as { method?: string; params?: { name?: string } };
             // tools/list and initialize are public so clients can discover capabilities
-            if (body.method === "tools/call" && FELLOW_AUTH_TOOLS.has(body.params?.name ?? "")) {
+            if (body.method === "tools/call" && !PUBLIC_TOOLS.has(body.params?.name ?? "")) {
               needsAuth = true;
             }
           } catch {

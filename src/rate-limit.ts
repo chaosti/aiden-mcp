@@ -13,49 +13,31 @@ const MAX_ATTEMPTS = 10; // 10 attempts per 5 minutes
 
 export interface RateLimitResult {
   allowed: boolean;
-  remaining: number;
   resetAt: number; // Unix timestamp when limit resets
 }
 
+async function attempts(env: Env, key: string): Promise<number> {
+  const record = await env.AIDEN_OAUTH.get(`${RATE_LIMIT_PREFIX}${key}`);
+  return record ? parseInt(record, 10) : 0;
+}
+
+async function recordAttempt(env: Env, key: string, current: number): Promise<void> {
+  await env.AIDEN_OAUTH.put(`${RATE_LIMIT_PREFIX}${key}`, String(current + 1), {
+    expirationTtl: WINDOW_SECONDS,
+  });
+}
+
 /**
- * Check if a request is within rate limits.
+ * Count this request against the limit and say whether it may proceed.
  *
- * @param env Cloudflare Workers environment
  * @param key Unique identifier for the rate limit (e.g., "auth:emailhash:ip")
- * @returns RateLimitResult indicating if request is allowed
  */
-export async function checkRateLimit(
-  env: Env,
-  key: string
-): Promise<RateLimitResult> {
-  const rlKey = `${RATE_LIMIT_PREFIX}${key}`;
-  const now = Math.floor(Date.now() / 1000);
-
-  // Get current count from KV
-  const record = await env.AIDEN_OAUTH.get(rlKey);
-  const current = record ? parseInt(record, 10) : 0;
-
-  if (current >= MAX_ATTEMPTS) {
-    // Rate limit exceeded
-    return {
-      allowed: false,
-      remaining: 0,
-      resetAt: now + WINDOW_SECONDS
-    };
-  }
-
-  // Increment counter
-  await env.AIDEN_OAUTH.put(
-    rlKey,
-    String(current + 1),
-    { expirationTtl: WINDOW_SECONDS }
-  );
-
-  return {
-    allowed: true,
-    remaining: MAX_ATTEMPTS - current - 1,
-    resetAt: now + WINDOW_SECONDS
-  };
+export async function checkRateLimit(env: Env, key: string): Promise<RateLimitResult> {
+  const current = await attempts(env, key);
+  const resetAt = Math.floor(Date.now() / 1000) + WINDOW_SECONDS;
+  if (current >= MAX_ATTEMPTS) return { allowed: false, resetAt };
+  await recordAttempt(env, key, current);
+  return { allowed: true, resetAt };
 }
 
 /**
@@ -64,15 +46,11 @@ export async function checkRateLimit(
  * record after it fails.
  */
 export async function isRateLimited(env: Env, key: string): Promise<boolean> {
-  const record = await env.AIDEN_OAUTH.get(`${RATE_LIMIT_PREFIX}${key}`);
-  return (record ? parseInt(record, 10) : 0) >= MAX_ATTEMPTS;
+  return (await attempts(env, key)) >= MAX_ATTEMPTS;
 }
 
 export async function recordFailedAttempt(env: Env, key: string): Promise<void> {
-  const rlKey = `${RATE_LIMIT_PREFIX}${key}`;
-  const record = await env.AIDEN_OAUTH.get(rlKey);
-  const current = record ? parseInt(record, 10) : 0;
-  await env.AIDEN_OAUTH.put(rlKey, String(current + 1), { expirationTtl: WINDOW_SECONDS });
+  await recordAttempt(env, key, await attempts(env, key));
 }
 
 /**

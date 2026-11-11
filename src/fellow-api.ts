@@ -61,8 +61,9 @@ export const CUSTOM_PROFILE_CAP = 14;
 
 /**
  * The fields that make up a recipe — what create/update accept. Anything
- * else on a read (server-managed fields, unknown additions) is dropped
- * before writing a profile read from one device onto another.
+ * else on a read (id, timestamps, deviceId, synced, …) is server-managed and
+ * must be dropped before a write: Fellow's validation rejects it by name
+ * ("property deviceId should not exist", observed live 2026-06).
  */
 export const WRITABLE_PROFILE_FIELDS = [
   "profileType",
@@ -82,7 +83,7 @@ export const WRITABLE_PROFILE_FIELDS = [
   "batchPulseTemperatures",
 ] as const satisfies readonly (keyof FellowProfile)[];
 
-export function writableProfile(p: FellowProfile): Omit<FellowProfile, "id"> {
+export function writableProfile(p: Omit<FellowProfile, "id">): Omit<FellowProfile, "id"> {
   const out: Record<string, unknown> = {};
   for (const f of WRITABLE_PROFILE_FIELDS) out[f] = p[f];
   return out as Omit<FellowProfile, "id">;
@@ -97,34 +98,12 @@ export function deviceLabel(d: FellowDevice): string {
  * Bad or missing device selector. Deliberately not a FellowApiError: it's
  * a usage mistake the model should correct, not an auth/API failure.
  */
-export class DeviceSelectionError extends Error {
+class DeviceSelectionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DeviceSelectionError";
   }
 }
-
-/**
- * Fields Fellow manages server-side; they come back in profile reads and
- * must not be sent in writes. List mirrors 9b/fellow-aiden.
- */
-export const SERVER_SIDE_PROFILE_FIELDS = [
-  "id",
-  "createdAt",
-  "deletedAt",
-  "lastUsedTime",
-  "sharedFrom",
-  "isDefaultProfile",
-  "instantBrew",
-  "folder",
-  "duration",
-  "lastGBQuantity",
-  // Not in 9b/fellow-aiden's list; Fellow's PATCH validation rejects these
-  // by name ("property deviceId should not exist", observed live 2026-06)
-  "deviceId",
-  "synced",
-  "updatedAt",
-];
 
 /**
  * Encode an id for use as one URL path segment. Ids reach the path from tool
@@ -340,14 +319,10 @@ export class FellowClient {
   ): Promise<FellowProfile> {
     // Fellow's gateway only routes PATCH here — PUT falls through to AWS
     // SigV4 parsing and dies on the Bearer token ("Invalid key=value pair").
-    // Server-managed fields picked up from the list response must be
-    // stripped or the PATCH is rejected (field list from 9b/fellow-aiden).
-    const payload: Record<string, unknown> = { ...profile };
-    for (const f of SERVER_SIDE_PROFILE_FIELDS) delete payload[f];
     const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/profiles/${seg(profileId)}`, {
       method: "PATCH",
       headers: this.headers(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(writableProfile(profile)),
     });
     const body = (await r.json()) as FellowProfile & { message?: string };
     if (!r.ok || (!body.id && body.id !== "")) {

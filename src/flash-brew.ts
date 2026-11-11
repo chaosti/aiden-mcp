@@ -24,15 +24,12 @@
  * halts extraction instantly, so bitterness risk is low).
  */
 
-// No imports needed - direct Ode Gen 2 values used
-
 export interface FlashBrewInput {
   dose_g?: number;
   target_volume_ml?: number;
   total_ratio?: number; // true ratio incl. ice melt; default 15
   ice_fraction?: number; // share of total liquid that is ice; default 0.3
   machine_profile_ratio?: number; // set ONLY to keep an existing profile's ratio → dose-trick plan
-  grinder?: string;
 }
 
 export interface FlashBrewPlan {
@@ -89,18 +86,21 @@ export function flashBrewPlan(input: FlashBrewInput): FlashBrewPlan {
   const flashGrind = 5.0;
   const grindLine = `Grind: Fellow Ode Gen 2 at ${flashGrind.toFixed(1)} (about 3 settings finer than hot batch baseline of 8.0). Cold dilution mutes aromatics, so the finer grind and extra extraction keeps the cup from tasting hollow.`;
 
+  const crowdWarning = (dose: number) => {
+    if (dose > 40) {
+      warnings.push(
+        `${Math.round(dose)}g will crowd the single-serve basket. Use the batch basket (and batch pulse settings) for doses this size.`,
+      );
+    }
+  };
+
   // ---- Dose-trick path: the user is keeping an existing profile's ratio ----
   if (input.machine_profile_ratio !== undefined) {
     const machineRatio = input.machine_profile_ratio;
     const dose = targetDose;
     const ice = round5(total - hot);
     const displayedDose = hot / machineRatio;
-
-    if (dose > 40) {
-      warnings.push(
-        `${Math.round(dose)}g will crowd the single-serve basket. Use the batch basket (and batch pulse settings) for doses this size.`,
-      );
-    }
+    crowdWarning(dose);
 
     const lines = [
       `Flash brew plan (${Math.round(dose)}g coffee, 1:${totalRatio} true ratio, ${Math.round(iceFraction * 100)}% ice) — dose-trick variant for your existing 1:${machineRatio} profile:`,
@@ -129,12 +129,7 @@ export function flashBrewPlan(input: FlashBrewInput): FlashBrewPlan {
   const dose = hot / profileRatio;
   const honestTotal = dose * totalRatio;
   const ice = round5(honestTotal - hot);
-
-  if (dose > 40) {
-    warnings.push(
-      `${Math.round(dose)}g will crowd the single-serve basket. Use the batch basket (and batch pulse settings) for doses this size.`,
-    );
-  }
+  crowdWarning(dose);
 
   const lines = [
     `Flash brew plan (${dose.toFixed(1)}g coffee, 1:${totalRatio} true ratio, ${Math.round(iceFraction * 100)}% ice):`,

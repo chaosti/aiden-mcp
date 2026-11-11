@@ -17,6 +17,7 @@
  */
 
 import { z } from "zod";
+import { WRITABLE_PROFILE_FIELDS } from "./fellow-api.js";
 
 // ============================================================
 // Echo verification (request path, create/update)
@@ -41,22 +42,7 @@ function numbersMatch(sent: number, got: unknown): boolean {
  * merely round-trip on update) is server-managed and excluded so it can't
  * generate false drift warnings.
  */
-const PROFILE_ECHO_KEYS = [
-  "title",
-  "ratio",
-  "bloomEnabled",
-  "bloomRatio",
-  "bloomDuration",
-  "bloomTemperature",
-  "ssPulsesEnabled",
-  "ssPulsesNumber",
-  "ssPulsesInterval",
-  "ssPulseTemperatures",
-  "batchPulsesEnabled",
-  "batchPulsesNumber",
-  "batchPulsesInterval",
-  "batchPulseTemperatures",
-];
+export const PROFILE_ECHO_KEYS = WRITABLE_PROFILE_FIELDS.filter((f) => f !== "profileType");
 
 /**
  * Compare the profile we sent against the one Fellow echoed back.

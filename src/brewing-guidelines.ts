@@ -13,8 +13,6 @@
  * maximize body and sweetness while minimizing harsh notes).
  */
 
-import { SUPPORTED_GRINDERS } from "./grinders.js";
-
 export interface GuidelineInput {
   process?: string;
   roast?: string; // light | medium-light | medium
@@ -45,8 +43,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
 
   // Detect basket type (default to batch)
   const basketType = (input.basket_type ?? "batch").toLowerCase();
-  const isConeBasket = /cone|conical|v-?60/.test(basketType);
-  const isBatchBasket = !isConeBasket; // default to batch
+  const isBatchBasket = !/cone|conical|v-?60/.test(basketType);
 
   // Personal brewing philosophy for milk drinks
   if (isBatchBasket) {
@@ -66,7 +63,7 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   const proc = (input.process ?? "").toLowerCase();
   const isNatural = /natural|sundried|dry/i.test(proc);
   const isHoney = !isNatural && /honey|semi/i.test(proc);
-  const isWashed = !isNatural && !isHoney && /washed|fully washed/i.test(proc);
+  const isWashed = !isNatural && !isHoney && /washed/i.test(proc);
   const processKnown = isNatural || isHoney || isWashed;
 
   // Detect roast tier — adjusted for milk-forward brewing (avoid dark roasts)
@@ -75,7 +72,6 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   let roastBase = 94; // default: medium roast baseline for milk drinks
   if (/medium[\s-]?light/.test(roastStr)) roastBase = 95;
   else if (/light/.test(roastStr)) roastBase = 96;
-  else if (/medium/.test(roastStr)) roastBase = 94;
 
   // Warn about dark roasts (not preferred)
   if (/dark/.test(roastStr)) {
@@ -108,10 +104,6 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
       n,
     ),
   );
-
-  // Flavor goals are hardcoded for milk drinks: rich, smooth, sweet, low acidity
-  const wantsLessAcid = true;  // always minimize acidity
-  const wantsMoreBody = true;  // always maximize body and sweetness
 
   // ============================================================
   // Apply principles
@@ -248,9 +240,8 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
   const pulseSpread = 2.5; // wider spread to reduce acidity
   const pulseLow = round05(pulseHigh - pulseSpread);
 
-  // Grind: basket-specific optimization for Fellow Ode Gen 2
-  // Ode Gen 2 scale: 1 (finest) to 11 (coarsest) with 0.1 increments
-  // 1 click past a number = +0.1 (e.g., 1 click past 8 = 8.1)
+  // Grind: Fellow Ode Gen 2 (stock burrs), the only supported grinder.
+  // Dial runs 1 (finest) to 11 (coarsest) in 0.1 steps: 1 click past 8 = 8.1.
   let grindOde: number;
   let bloomDuration: number;
   let pulseInterval: number;
@@ -285,7 +276,6 @@ export function brewingGuidelines(input: GuidelineInput): BrewingGuidelines {
     pulseInterval = 18;
   }
 
-  // Format grind setting (no conversion needed - direct Ode Gen 2 values)
   const grindSetting = `Fellow Ode Gen 2: ${grindOde.toFixed(1)}`;
 
   if (isBatchBasket) {

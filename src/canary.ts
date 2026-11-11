@@ -36,6 +36,7 @@ import {
   scheduleSchema,
   diffProfileEcho,
   zodIssues,
+  PROFILE_ECHO_KEYS,
 } from "./fellow-schemas.js";
 import type { Env } from "./oauth/kv.js";
 
@@ -164,20 +165,7 @@ async function checkStoredValues(env: Env, custom: FellowProfile[]): Promise<str
       .filter((p) => p.title !== CANARY_PROFILE.title)
       .map((p) => ({
         id: p.id,
-        title: p.title,
-        ratio: p.ratio,
-        bloomEnabled: p.bloomEnabled,
-        bloomRatio: p.bloomRatio,
-        bloomDuration: p.bloomDuration,
-        bloomTemperature: p.bloomTemperature,
-        ssPulsesEnabled: p.ssPulsesEnabled,
-        ssPulsesNumber: p.ssPulsesNumber,
-        ssPulsesInterval: p.ssPulsesInterval,
-        ssPulseTemperatures: p.ssPulseTemperatures,
-        batchPulsesEnabled: p.batchPulsesEnabled,
-        batchPulsesNumber: p.batchPulsesNumber,
-        batchPulsesInterval: p.batchPulsesInterval,
-        batchPulseTemperatures: p.batchPulseTemperatures,
+        ...Object.fromEntries(PROFILE_ECHO_KEYS.map((k) => [k, p[k]])),
       }))
       .sort((a, b) => (a.id ?? "").localeCompare(b.id ?? "")),
   );
