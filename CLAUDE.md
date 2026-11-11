@@ -9,11 +9,12 @@ Unofficial **MCP server for the Fellow Aiden coffee brewer**. Lets Claude push/l
 - **State:** none persistent. Cloudflare KV (`AIDEN_OAUTH`) holds only short-lived records — auth codes ≤10min, access tokens until the Fellow JWT expires (≤30d), refresh tokens + client regs ≤90d, rate-limit counters 5min. **Only Fellow-issued JWTs are stored, never the Fellow password.**
 - **Secrets:** Cloudflare Worker secrets (`npx wrangler secret put …`) — canary account creds + webhook. Local dev vars in `.dev.vars` (untracked). Never in-repo.
 - **Auth model:** OAuth 2.0 auth-code + PKCE, or `X-Fellow-Email`/`X-Fellow-Password` headers. Password reaches server once at `/oauth/authorize`, exchanged for a Fellow JWT, then discarded.
+- **Multiple Aidens** on one Fellow account (Canada + Italy). Writes require `device` when there's more than one; reads cover all. `sync_profiles` copies profiles one-way, matched by title (ids are per-device slots), never deletes.
 - **Profile data** (temperature/ratio priors) is harvested, not folk wisdom — see `data/`.
 
 ## Folder map
 - `src/index.ts` — Worker entry: HTTP routing, MCP server, tool registration, header auth.
-- `src/fellow-api.ts` — calls to Fellow's private API (list/create/update/delete/share, device info).
+- `src/fellow-api.ts` — calls to Fellow's private API (list/create/update/delete/share, device info). Multi-device: `listDevices()` / `resolveDevice(selector?)`; every profile/schedule method takes a `deviceId`.
 - `src/auth.ts` — Fellow `/auth/login` → JWT.
 - `src/fellow-schemas.ts` — zod contracts for Fellow API responses (drift detection).
 - `src/validation.ts` — client-side profile validation before write (clear errors, not 400s).
@@ -35,6 +36,7 @@ Unofficial **MCP server for the Fellow Aiden coffee brewer**. Lets Claude push/l
 | Working on… | Read | Skip |
 |---|---|---|
 | A tool's behavior / MCP registration | `src/index.ts` + the tool's file | `oauth/`, `canary.ts` |
+| Device targeting / profile sync | `src/fellow-api.ts` (`resolveDevice`, `writableProfile`), `src/index.ts` (`sync_profiles`) | brewing files, `oauth/` |
 | Fellow API call broke / new endpoint | `src/fellow-api.ts`, `src/auth.ts`, `src/fellow-schemas.ts` | brewing files |
 | Profile rejected / validation errors | `src/validation.ts`, `README.md` (schema table) | `oauth/` |
 | Brewing heuristics / recipe output | `src/brewing-guidelines.ts`, `src/grinders.ts`, `data/README.md` | `oauth/`, `fellow-api.ts` |

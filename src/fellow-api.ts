@@ -8,6 +8,10 @@
  * Auth model: each MCP request brings its own Fellow email/password
  * via headers, we exchange them for a JWT, use it for one batch of
  * calls, discard. Nothing is stored server-side.
+ *
+ * Devices: one Fellow account can own several Aidens. Profiles and
+ * schedules live per device, so every profile/schedule method takes the
+ * device id explicitly — resolve it with resolveDevice() first.
  */
 
 const BASE_URL = "https://l8qtmnc692.execute-api.us-west-2.amazonaws.com/v1";
@@ -56,6 +60,51 @@ export function categorize(profile: FellowProfile): ProfileCategory {
 export const CUSTOM_PROFILE_CAP = 14;
 
 /**
+ * The fields that make up a recipe — what create/update accept. Anything
+ * else on a read (server-managed fields, unknown additions) is dropped
+ * before writing a profile read from one device onto another.
+ */
+export const WRITABLE_PROFILE_FIELDS = [
+  "profileType",
+  "title",
+  "ratio",
+  "bloomEnabled",
+  "bloomRatio",
+  "bloomDuration",
+  "bloomTemperature",
+  "ssPulsesEnabled",
+  "ssPulsesNumber",
+  "ssPulsesInterval",
+  "ssPulseTemperatures",
+  "batchPulsesEnabled",
+  "batchPulsesNumber",
+  "batchPulsesInterval",
+  "batchPulseTemperatures",
+] as const satisfies readonly (keyof FellowProfile)[];
+
+export function writableProfile(p: FellowProfile): Omit<FellowProfile, "id"> {
+  const out: Record<string, unknown> = {};
+  for (const f of WRITABLE_PROFILE_FIELDS) out[f] = p[f];
+  return out as Omit<FellowProfile, "id">;
+}
+
+/** Human-readable device label: the name set in the Fellow app, else the id. */
+export function deviceLabel(d: FellowDevice): string {
+  return d.displayName?.trim() || d.id;
+}
+
+/**
+ * Bad or missing device selector. Deliberately not a FellowApiError: it's
+ * a usage mistake the model should correct, not an auth/API failure.
+ */
+export class DeviceSelectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DeviceSelectionError";
+  }
+}
+
+/**
  * Fields Fellow manages server-side; they come back in profile reads and
  * must not be sent in writes. List mirrors 9b/fellow-aiden.
  */
@@ -77,6 +126,14 @@ export const SERVER_SIDE_PROFILE_FIELDS = [
   "updatedAt",
 ];
 
+/**
+ * Encode an id for use as one URL path segment. Ids reach the path from tool
+ * input (schedule ids) as well as from Fellow, and an unencoded "../" would be
+ * normalized away by URL parsing — redirecting the call to another device's
+ * resources and bypassing device targeting.
+ */
+const seg = encodeURIComponent;
+
 export class FellowApiError extends Error {
   constructor(
     message: string,
@@ -90,8 +147,7 @@ export class FellowApiError extends Error {
 
 export class FellowClient {
   private token: string | null = null;
-  private deviceId: string | null = null;
-  private deviceName: string | null = null;
+  private devices: FellowDevice[] | null = null;
 
   constructor(
     private email: string,
@@ -201,24 +257,53 @@ export class FellowClient {
     }
   }
 
-  async getDevice(): Promise<FellowDevice> {
-    if (this.deviceId) return { id: this.deviceId, displayName: this.deviceName ?? undefined };
+  /** All Aidens on the account. Cached for the life of this client (one MCP request). */
+  async listDevices(): Promise<FellowDevice[]> {
+    if (this.devices) return this.devices;
     const r = await fetch(`${BASE_URL}/devices?dataType=real`, {
       headers: this.headers(),
     });
     const devices = (await r.json()) as FellowDevice[];
-    if (!devices?.length) {
+    if (!Array.isArray(devices) || !devices.length) {
       throw new FellowApiError("No Aiden device found on this Fellow account", r.status);
     }
-    const d = devices[0];
-    this.deviceId = d.id;
-    this.deviceName = d.displayName ?? null;
-    return d;
+    this.devices = devices;
+    return devices;
   }
 
-  async listProfiles(): Promise<FellowProfile[]> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/profiles`, {
+  /**
+   * Pick one Aiden by name (case-insensitive, as set in the Fellow app) or id.
+   * With no selector, succeeds only when the account has exactly one Aiden —
+   * with several, guessing could brew or overwrite on the wrong machine.
+   */
+  async resolveDevice(selector?: string): Promise<FellowDevice> {
+    const devices = await this.listDevices();
+    const known = () => devices.map((d) => `"${deviceLabel(d)}" (id ${d.id})`).join(", ");
+
+    const wanted = selector?.trim();
+    if (!wanted) {
+      if (devices.length === 1) return devices[0];
+      throw new DeviceSelectionError(
+        `This account has ${devices.length} Aidens — pass device to choose one: ${known()}.`,
+      );
+    }
+
+    const byId = devices.find((d) => d.id === wanted);
+    if (byId) return byId;
+    const byName = devices.filter(
+      (d) => d.displayName?.trim().toLowerCase() === wanted.toLowerCase(),
+    );
+    if (byName.length === 1) return byName[0];
+    if (byName.length > 1) {
+      throw new DeviceSelectionError(
+        `More than one Aiden is named "${wanted}" — pass its id instead, or rename one in the Fellow app: ${known()}.`,
+      );
+    }
+    throw new DeviceSelectionError(`No Aiden matches "${wanted}". Available: ${known()}.`);
+  }
+
+  async listProfiles(deviceId: string): Promise<FellowProfile[]> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/profiles`, {
       headers: this.headers(),
     });
     if (!r.ok) {
@@ -227,9 +312,8 @@ export class FellowClient {
     return (await r.json()) as FellowProfile[];
   }
 
-  async createProfile(profile: Omit<FellowProfile, "id">): Promise<FellowProfile> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/profiles`, {
+  async createProfile(deviceId: string, profile: Omit<FellowProfile, "id">): Promise<FellowProfile> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/profiles`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(profile),
@@ -250,17 +334,17 @@ export class FellowClient {
   }
 
   async updateProfile(
+    deviceId: string,
     profileId: string,
     profile: Omit<FellowProfile, "id">,
   ): Promise<FellowProfile> {
-    const { id } = await this.getDevice();
     // Fellow's gateway only routes PATCH here — PUT falls through to AWS
     // SigV4 parsing and dies on the Bearer token ("Invalid key=value pair").
     // Server-managed fields picked up from the list response must be
     // stripped or the PATCH is rejected (field list from 9b/fellow-aiden).
     const payload: Record<string, unknown> = { ...profile };
     for (const f of SERVER_SIDE_PROFILE_FIELDS) delete payload[f];
-    const r = await fetch(`${BASE_URL}/devices/${id}/profiles/${profileId}`, {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/profiles/${seg(profileId)}`, {
       method: "PATCH",
       headers: this.headers(),
       body: JSON.stringify(payload),
@@ -276,9 +360,8 @@ export class FellowClient {
     return body;
   }
 
-  async deleteProfile(profileId: string): Promise<void> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/profiles/${profileId}`, {
+  async deleteProfile(deviceId: string, profileId: string): Promise<void> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/profiles/${seg(profileId)}`, {
       method: "DELETE",
       headers: this.headers(),
     });
@@ -291,9 +374,8 @@ export class FellowClient {
     }
   }
 
-  async shareProfile(profileId: string): Promise<string> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/profiles/${profileId}/share`, {
+  async shareProfile(deviceId: string, profileId: string): Promise<string> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/profiles/${seg(profileId)}/share`, {
       method: "POST",
       headers: this.headers(),
     });
@@ -307,8 +389,8 @@ export class FellowClient {
   /**
    * Find a profile by id OR title (case-sensitive). Returns null if not found.
    */
-  async findProfile(idOrTitle: string): Promise<FellowProfile | null> {
-    const profiles = await this.listProfiles();
+  async findProfile(deviceId: string, idOrTitle: string): Promise<FellowProfile | null> {
+    const profiles = await this.listProfiles(deviceId);
     return profiles.find((p) => p.id === idOrTitle || p.title === idOrTitle) ?? null;
   }
 
@@ -316,18 +398,19 @@ export class FellowClient {
   // Schedules — recurring brews triggered by the device
   // ============================================================
 
-  async listSchedules(): Promise<FellowSchedule[]> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/schedules`, { headers: this.headers() });
+  async listSchedules(deviceId: string): Promise<FellowSchedule[]> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/schedules`, { headers: this.headers() });
     if (!r.ok) {
       throw new FellowApiError("Failed to list schedules", r.status, await r.text());
     }
     return (await r.json()) as FellowSchedule[];
   }
 
-  async createSchedule(schedule: Omit<FellowSchedule, "id">): Promise<FellowSchedule> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/schedules`, {
+  async createSchedule(
+    deviceId: string,
+    schedule: Omit<FellowSchedule, "id">,
+  ): Promise<FellowSchedule> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/schedules`, {
       method: "POST",
       headers: this.headers(),
       body: JSON.stringify(schedule),
@@ -339,9 +422,8 @@ export class FellowClient {
     return body;
   }
 
-  async deleteSchedule(scheduleId: string): Promise<void> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/schedules/${scheduleId}`, {
+  async deleteSchedule(deviceId: string, scheduleId: string): Promise<void> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/schedules/${seg(scheduleId)}`, {
       method: "DELETE",
       headers: this.headers(),
     });
@@ -354,9 +436,8 @@ export class FellowClient {
     }
   }
 
-  async toggleSchedule(scheduleId: string, enabled: boolean): Promise<void> {
-    const { id } = await this.getDevice();
-    const r = await fetch(`${BASE_URL}/devices/${id}/schedules/${scheduleId}`, {
+  async toggleSchedule(deviceId: string, scheduleId: string, enabled: boolean): Promise<void> {
+    const r = await fetch(`${BASE_URL}/devices/${seg(deviceId)}/schedules/${seg(scheduleId)}`, {
       method: "PATCH",
       headers: this.headers(),
       body: JSON.stringify({ enabled }),

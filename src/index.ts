@@ -18,7 +18,17 @@ import { z } from "zod";
 
 import { clientFromHeaders, NoCredentialsError, ExpiredTokenError } from "./auth.js";
 import { profileInputSchema, checkPulseConsistency, boolish } from "./validation.js";
-import { FellowApiError, FellowClient, categorize, CUSTOM_PROFILE_CAP } from "./fellow-api.js";
+import {
+  FellowApiError,
+  FellowClient,
+  FellowDevice,
+  FellowProfile,
+  categorize,
+  deviceLabel,
+  writableProfile,
+  WRITABLE_PROFILE_FIELDS,
+  CUSTOM_PROFILE_CAP,
+} from "./fellow-api.js";
 import { diffProfileEcho } from "./fellow-schemas.js";
 import { brewingGuidelines } from "./brewing-guidelines.js";
 import { flashBrewPlan } from "./flash-brew.js";
@@ -34,7 +44,15 @@ import { handleToken } from "./oauth/token.js";
 import { Env } from "./oauth/kv.js";
 import { handleCorsPreflightRequest, addCorsHeaders } from "./oauth/cors.js";
 
-const VERSION = "1.1.2";
+const VERSION = "1.2.0";
+
+/** Recipe fields (everything but the title) that differ, as "field target → source". */
+function settingsDiff(source: FellowProfile, target: FellowProfile): string[] {
+  const show = (v: unknown) => (Array.isArray(v) ? v.join("/") : String(v));
+  return WRITABLE_PROFILE_FIELDS.filter((f) => f !== "title")
+    .filter((f) => JSON.stringify(source[f]) !== JSON.stringify(target[f]))
+    .map((f) => `${f} ${show(target[f])} → ${show(source[f])}`);
+}
 
 /**
  * @param seed  Client already built by the /mcp pre-flight auth check. Reusing
@@ -54,52 +72,110 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   const getClient = (): Promise<FellowClient> =>
     (clientPromise ??= clientFromHeaders(headers, env));
 
+  // Which Aiden a tool acts on. Changes must name one whenever the account
+  // has more than one (resolveDevice errors otherwise); reads cover them all.
+  const deviceParam = z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Which Aiden to act on: its name from the Fellow app (case-insensitive, e.g. 'Italy') or its id. Required when the account has more than one Aiden — call list_devices to see them.",
+    );
+  const readDeviceParam = z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Which Aiden to show: its name from the Fellow app (case-insensitive, e.g. 'Italy') or its id. Omit to show every Aiden on the account.",
+    );
+
+  /** Devices a read-only tool covers: the one asked for, else all of them. */
+  const devicesFor = async (client: FellowClient, device?: string): Promise<FellowDevice[]> =>
+    device ? [await client.resolveDevice(device)] : client.listDevices();
+
+  const deviceSummary = async (client: FellowClient, d: FellowDevice): Promise<string> => {
+    const profiles = await client.listProfiles(d.id);
+    const customCount = profiles.filter((p) => categorize(p) === "custom").length;
+    return (
+      `Device: ${deviceLabel(d)}\n` +
+      `ID: ${d.id}\n` +
+      `Custom profile slots: ${customCount}/${CUSTOM_PROFILE_CAP}\n` +
+      `Total profiles visible (incl. stock + shared): ${profiles.length}`
+    );
+  };
+
+  // ============================================================
+  // list_devices
+  // ============================================================
+  server.tool(
+    "list_devices",
+    "List every Aiden on the Fellow account with its name, id and custom-slot usage. Pass a name (or id) from here as `device` to target one brewer in the other tools.",
+    {},
+    async () => {
+      const client = await getClient();
+      const devices = await client.listDevices();
+      const blocks = await Promise.all(devices.map((d) => deviceSummary(client, d)));
+      let text = `${devices.length} Aiden${devices.length === 1 ? "" : "s"} on this account:\n\n` + blocks.join("\n\n");
+
+      const names = devices.map((d) => d.displayName?.trim().toLowerCase()).filter(Boolean);
+      if (new Set(names).size < names.length) {
+        text +=
+          "\n\n⚠ Two or more Aidens share a name, so they can only be targeted by id. " +
+          "Suggest the user rename them in the Fellow app (e.g. 'Canada' and 'Italy').";
+      }
+      return { content: [{ type: "text", text }] };
+    },
+  );
+
   // ============================================================
   // list_profiles
   // ============================================================
   server.tool(
     "list_profiles",
-    "List all brew profiles currently on your Fellow Aiden, grouped by category (custom, stock, shared). The 14-profile cap applies only to user-created custom profiles.",
-    {},
-    async () => {
+    "List all brew profiles on your Fellow Aiden, grouped by category (custom, stock, shared). The 14-profile cap applies only to user-created custom profiles, per Aiden. Profile ids are per-Aiden: the same recipe has a different id on each brewer. Shows every Aiden unless `device` is given.",
+    { device: readDeviceParam },
+    async ({ device }) => {
       const client = await getClient();
-      const device = await client.getDevice();
-      const profiles = await client.listProfiles();
+      const devices = await devicesFor(client, device);
+      const blocks = await Promise.all(devices.map(async (d) => {
+        const profiles = await client.listProfiles(d.id);
 
-      const grouped = { custom: [], stock: [], shared: [], unknown: [] } as Record<
-        ReturnType<typeof categorize>,
-        typeof profiles
-      >;
-      for (const p of profiles) grouped[categorize(p)].push(p);
+        const grouped = { custom: [], stock: [], shared: [], unknown: [] } as Record<
+          ReturnType<typeof categorize>,
+          typeof profiles
+        >;
+        for (const p of profiles) grouped[categorize(p)].push(p);
 
-      // Stock and shared profiles can have null/missing fields, so be defensive.
-      const fmt = (p: (typeof profiles)[number]) => {
-        const id = p.id ?? "(no id)";
-        const title = p.title ?? "(untitled)";
-        const ratioPart = p.ratio != null ? `1:${p.ratio} ratio` : "";
-        const bloomPart = p.bloomTemperature != null ? `${p.bloomTemperature}°C bloom` : "";
-        const ss = Array.isArray(p.ssPulseTemperatures) ? p.ssPulseTemperatures : [];
-        const ssPart = ss.length ? `SS ${ss.join("/")}°C` : "";
-        const details = [ratioPart, bloomPart, ssPart].filter(Boolean).join(", ");
-        return details ? `  ${id}  ${title}  —  ${details}` : `  ${id}  ${title}`;
-      };
+        // Stock and shared profiles can have null/missing fields, so be defensive.
+        const fmt = (p: (typeof profiles)[number]) => {
+          const id = p.id ?? "(no id)";
+          const title = p.title ?? "(untitled)";
+          const ratioPart = p.ratio != null ? `1:${p.ratio} ratio` : "";
+          const bloomPart = p.bloomTemperature != null ? `${p.bloomTemperature}°C bloom` : "";
+          const ss = Array.isArray(p.ssPulseTemperatures) ? p.ssPulseTemperatures : [];
+          const ssPart = ss.length ? `SS ${ss.join("/")}°C` : "";
+          const details = [ratioPart, bloomPart, ssPart].filter(Boolean).join(", ");
+          return details ? `  ${id}  ${title}  —  ${details}` : `  ${id}  ${title}`;
+        };
 
-      const lines: string[] = [
-        `Aiden: ${device.displayName ?? "Aiden"}`,
-        `Custom slots: ${grouped.custom.length}/${CUSTOM_PROFILE_CAP} used`,
-        "",
-        `Custom profiles (${grouped.custom.length}):`,
-        ...grouped.custom.map(fmt),
-      ];
-      if (grouped.stock.length) {
-        lines.push("", `Stock profiles (${grouped.stock.length}, can't delete):`, ...grouped.stock.map(fmt));
-      }
-      if (grouped.shared.length) {
-        lines.push("", `Shared/community profiles (${grouped.shared.length}):`, ...grouped.shared.map(fmt));
-      }
+        const lines: string[] = [
+          `Aiden: ${deviceLabel(d)}`,
+          `Custom slots: ${grouped.custom.length}/${CUSTOM_PROFILE_CAP} used`,
+          "",
+          `Custom profiles (${grouped.custom.length}):`,
+          ...grouped.custom.map(fmt),
+        ];
+        if (grouped.stock.length) {
+          lines.push("", `Stock profiles (${grouped.stock.length}, can't delete):`, ...grouped.stock.map(fmt));
+        }
+        if (grouped.shared.length) {
+          lines.push("", `Shared/community profiles (${grouped.shared.length}):`, ...grouped.shared.map(fmt));
+        }
+        return lines.join("\n");
+      }));
 
       return {
-        content: [{ type: "text", text: lines.join("\n") }],
+        content: [{ type: "text", text: blocks.join("\n\n") }],
       };
     },
   );
@@ -109,9 +185,9 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "create_profile",
-    "Create a new brew profile on your Aiden and return a brew.link URL. The profile will appear in the Fellow iOS app immediately. If the device is at its 14-profile cap, you'll get an error — call delete_profile first to free a slot.",
-    profileInputSchema.shape,
-    async (input) => {
+    "Create a new brew profile on your Aiden and return a brew.link URL. The profile will appear in the Fellow iOS app immediately. If the device is at its 14-profile cap, you'll get an error — call delete_profile first to free a slot. With more than one Aiden on the account, `device` is required. To copy profiles between Aidens, use sync_profiles instead.",
+    { ...profileInputSchema.shape, device: deviceParam },
+    async ({ device, ...input }) => {
       const parsed = profileInputSchema.parse(input);
       const consistencyErrors = checkPulseConsistency(parsed);
       if (consistencyErrors.length) {
@@ -124,16 +200,17 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       }
 
       const client = await getClient();
+      const target = await client.resolveDevice(device);
       let created;
       try {
-        created = await client.createProfile(parsed);
+        created = await client.createProfile(target.id, parsed);
       } catch (err) {
         // The 14-slot cap is the single most common create failure. A bare
         // "you're full" costs the caller a whole design cycle to recover
         // from, so name the profiles worth deleting instead — least recently
         // used first, which is the choice the user would make anyway.
         if (err instanceof FellowApiError && /maximum number of profiles|14-profile cap/i.test(err.message)) {
-          const candidates = (await client.listProfiles())
+          const candidates = (await client.listProfiles(target.id))
             .filter((p) => categorize(p) === "custom")
             .map((p) => p as typeof p & { lastUsedTime?: number | null })
             .sort((a, b) => (a.lastUsedTime ?? 0) - (b.lastUsedTime ?? 0))
@@ -150,7 +227,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
               {
                 type: "text",
                 text:
-                  `Aiden is at its ${CUSTOM_PROFILE_CAP}-profile cap, so "${parsed.title}" was not created.\n` +
+                  `${deviceLabel(target)} is at its ${CUSTOM_PROFILE_CAP}-profile cap, so "${parsed.title}" was not created.\n` +
                   `Free a slot with delete_profile, then retry this exact create_profile call.\n\n` +
                   `Least-recently-used custom profiles (safest to delete first):\n` +
                   candidates.join("\n") +
@@ -168,11 +245,11 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       // parameters. Surface any mismatch loudly.
       const drift = diffProfileEcho(parsed, created as unknown as Record<string, unknown>);
 
-      const link = await client.shareProfile(created.id!);
+      const link = await client.shareProfile(target.id, created.id!);
 
       let text =
-        `Created profile "${created.title}" (id: ${created.id}).\n` +
-        `The profile is now on your Aiden — walk over and brew it directly, no extra step needed.\n\n` +
+        `Created profile "${created.title}" on ${deviceLabel(target)} (id: ${created.id}).\n` +
+        `The profile is now on that Aiden — walk over and brew it directly, no extra step needed.\n\n` +
         `brew.link (optional, for sharing or QR-scanning at the device): ${link}`;
       if (drift.length) {
         text +=
@@ -192,8 +269,9 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "update_profile",
-    "Update an existing brew profile on your Aiden in place. Pass the profile id (or exact title) plus ANY subset of the profile fields you want to change — unspecified fields keep their current values. Useful for dialing in an existing recipe (e.g. nudge ratio, drop a temperature) without delete-and-recreate. The brew.link URL stays the same since the profile id doesn't change.",
+    "Update an existing brew profile on your Aiden in place. Pass the profile id (or exact title) plus ANY subset of the profile fields you want to change — unspecified fields keep their current values. Useful for dialing in an existing recipe (e.g. nudge ratio, drop a temperature) without delete-and-recreate. The brew.link URL stays the same since the profile id doesn't change. With more than one Aiden on the account, `device` is required; this changes the profile on that Aiden only (use sync_profiles to copy the change to the other).",
     {
+      device: deviceParam,
       idOrTitle: z
         .string()
         .min(1)
@@ -218,16 +296,17 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         .optional(),
     },
     async (input) => {
-      const { idOrTitle, ...changes } = input;
+      const { device, idOrTitle, ...changes } = input;
       const client = await getClient();
-      const existing = await client.findProfile(idOrTitle);
+      const target = await client.resolveDevice(device);
+      const existing = await client.findProfile(target.id, idOrTitle);
       if (!existing) {
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `No profile matched "${idOrTitle}". Run list_profiles first — note that titles are case-sensitive.`,
+              text: `No profile matched "${idOrTitle}" on ${deviceLabel(target)}. Run list_profiles first — note that titles are case-sensitive and ids differ per Aiden.`,
             },
           ],
         };
@@ -256,6 +335,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       }
 
       const updated = await client.updateProfile(
+        target.id,
         existing.id!,
         body as Omit<typeof existing, "id">,
       );
@@ -267,7 +347,7 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
       );
       const changedFields = Object.keys(changes);
       let text =
-        `Updated "${updated.title}" (id: ${existing.id}).\n` +
+        `Updated "${updated.title}" on ${deviceLabel(target)} (id: ${existing.id}).\n` +
         `Changed: ${changedFields.length ? changedFields.join(", ") : "(no field changes — title only)"}\n` +
         `Profile id unchanged, so existing brew.link still works.`;
       if (drift.length) {
@@ -287,30 +367,34 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "delete_profile",
-    "Delete a brew profile from your Aiden. Pass either the profile id (e.g. 'p10') or the exact title (e.g. 'Mpemba v2'). Use list_profiles first if you don't know the id.",
+    "Delete a brew profile from your Aiden. Pass either the profile id (e.g. 'p10') or the exact title (e.g. 'Mpemba v2'). Use list_profiles first if you don't know the id. With more than one Aiden on the account, `device` is required; only that Aiden's copy is deleted.",
     {
+      device: deviceParam,
       idOrTitle: z
         .string()
         .min(1)
         .describe("Either the profile id (e.g. 'p10') or the exact case-sensitive title"),
     },
-    async ({ idOrTitle }) => {
+    async ({ device, idOrTitle }) => {
       const client = await getClient();
-      const profile = await client.findProfile(idOrTitle);
+      const target = await client.resolveDevice(device);
+      const profile = await client.findProfile(target.id, idOrTitle);
       if (!profile) {
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: `No profile matched "${idOrTitle}". Run list_profiles to see what's available — note that titles are case-sensitive.`,
+              text: `No profile matched "${idOrTitle}" on ${deviceLabel(target)}. Run list_profiles to see what's available — note that titles are case-sensitive and ids differ per Aiden.`,
             },
           ],
         };
       }
-      await client.deleteProfile(profile.id!);
+      await client.deleteProfile(target.id, profile.id!);
       return {
-        content: [{ type: "text", text: `Deleted profile "${profile.title}" (id: ${profile.id}).` }],
+        content: [
+          { type: "text", text: `Deleted profile "${profile.title}" from ${deviceLabel(target)} (id: ${profile.id}).` },
+        ],
       };
     },
   );
@@ -320,25 +404,27 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "share_profile",
-    "Generate a brew.link URL for an existing profile on your Aiden. Use this to re-share a profile you already have. (create_profile already returns a brew.link, so you only need this for profiles created via the Fellow app or another tool.)",
+    "Generate a brew.link URL for an existing profile on your Aiden. Use this to re-share a profile you already have. (create_profile already returns a brew.link, so you only need this for profiles created via the Fellow app or another tool.) With more than one Aiden on the account, `device` is required.",
     {
+      device: deviceParam,
       idOrTitle: z
         .string()
         .min(1)
         .describe("Profile id (e.g. 'p10') or exact case-sensitive title"),
     },
-    async ({ idOrTitle }) => {
+    async ({ device, idOrTitle }) => {
       const client = await getClient();
-      const profile = await client.findProfile(idOrTitle);
+      const target = await client.resolveDevice(device);
+      const profile = await client.findProfile(target.id, idOrTitle);
       if (!profile) {
         return {
           isError: true,
           content: [
-            { type: "text", text: `No profile matched "${idOrTitle}". Run list_profiles first.` },
+            { type: "text", text: `No profile matched "${idOrTitle}" on ${deviceLabel(target)}. Run list_profiles first.` },
           ],
         };
       }
-      const link = await client.shareProfile(profile.id!);
+      const link = await client.shareProfile(target.id, profile.id!);
       return {
         content: [{ type: "text", text: `brew.link for "${profile.title}": ${link}` }],
       };
@@ -432,64 +518,69 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "list_schedules",
-    "List all scheduled brews on your Aiden. Each schedule has a recurrence pattern (which days of the week), a time of day, a profile to brew, and a water amount. Schedules can be enabled/disabled individually.",
+    "List all scheduled brews on your Aiden. Each schedule has a recurrence pattern (which days of the week), a time of day in that Aiden's local time, a profile to brew, and a water amount. Schedules can be enabled/disabled individually. Shows every Aiden unless `device` is given.",
     {
+      device: readDeviceParam,
       include_raw: boolish
         .default(false)
         .describe(
           "Include the raw schedule JSON from Fellow. Off by default because it is very large (it embeds a full copy of each schedule's profile). Turn on only when diagnosing non-standard fields.",
         ),
     },
-    async ({ include_raw }) => {
+    async ({ device, include_raw }) => {
       const client = await getClient();
-      const schedules = (await client.listSchedules()) as unknown as Array<Record<string, unknown>>;
-      if (!schedules.length) {
-        return { content: [{ type: "text", text: "No scheduled brews on this Aiden." }] };
-      }
-      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      const fmt = (s: Record<string, unknown>) => {
-        const days = (s.days as boolean[] | undefined)
-          ?.map((on, i) => (on ? dayNames[i] : null))
-          .filter(Boolean)
-          .join(",");
-        const sec = (s.secondFromStartOfTheDay as number | undefined) ?? 0;
-        const hh = Math.floor(sec / 3600);
-        const mm = Math.floor((sec % 3600) / 60);
-        const time = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
-        const status = s.enabled ? "enabled" : "disabled";
-        // A schedule with no days set can never fire — call that out rather
-        // than printing a blank column the model has to interpret.
-        const when = days || "NEVER FIRES (no days set)";
-        return `  ${s.id ?? "(no id)"}  ${when}  ${time}  ${s.amountOfWater}mL  profile:${s.profileId}  [${status}]`;
-      };
+      const devices = await devicesFor(client, device);
+      const blocks = await Promise.all(devices.map(async (d) => {
+        const schedules = (await client.listSchedules(d.id)) as unknown as Array<Record<string, unknown>>;
+        if (!schedules.length) {
+          return `No scheduled brews on ${deviceLabel(d)}.`;
+        }
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const fmt = (s: Record<string, unknown>) => {
+          const days = (s.days as boolean[] | undefined)
+            ?.map((on, i) => (on ? dayNames[i] : null))
+            .filter(Boolean)
+            .join(",");
+          const sec = (s.secondFromStartOfTheDay as number | undefined) ?? 0;
+          const hh = Math.floor(sec / 3600);
+          const mm = Math.floor((sec % 3600) / 60);
+          const time = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+          const status = s.enabled ? "enabled" : "disabled";
+          // A schedule with no days set can never fire — call that out rather
+          // than printing a blank column the model has to interpret.
+          const when = days || "NEVER FIRES (no days set)";
+          return `  ${s.id ?? "(no id)"}  ${when}  ${time}  ${s.amountOfWater}mL  profile:${s.profileId}  [${status}]`;
+        };
 
-      const lines = [
-        `Schedules (${schedules.length}, device local time):`,
-        ...schedules.map(fmt),
-      ];
+        const lines = [
+          `Schedules on ${deviceLabel(d)} (${schedules.length}, device local time):`,
+          ...schedules.map(fmt),
+        ];
 
-      const inert = schedules.filter((s) => !(s.days as boolean[] | undefined)?.some(Boolean));
-      if (inert.length) {
-        lines.push(
-          "",
-          `Note: ${inert.length} schedule(s) have no days set and can never fire. ` +
-            `They occupy the list but do nothing — delete_schedule will clear them.`,
-        );
-      }
+        const inert = schedules.filter((s) => !(s.days as boolean[] | undefined)?.some(Boolean));
+        if (inert.length) {
+          lines.push(
+            "",
+            `Note: ${inert.length} schedule(s) have no days set and can never fire. ` +
+              `They occupy the list but do nothing — delete_schedule will clear them.`,
+          );
+        }
 
-      if (include_raw) {
-        // Fellow embeds a full copy of the profile in every schedule, which
-        // dwarfs the useful fields and repeats for schedules sharing a
-        // profile. Drop it — profile details belong to list_profiles.
-        const trimmed = schedules.map(({ profile, ...rest }) => rest);
-        lines.push(
-          "",
-          "Raw JSON (nested `profile` copies stripped — see list_profiles for those):",
-          JSON.stringify(trimmed, null, 2),
-        );
-      }
+        if (include_raw) {
+          // Fellow embeds a full copy of the profile in every schedule, which
+          // dwarfs the useful fields and repeats for schedules sharing a
+          // profile. Drop it — profile details belong to list_profiles.
+          const trimmed = schedules.map(({ profile, ...rest }) => rest);
+          lines.push(
+            "",
+            "Raw JSON (nested `profile` copies stripped — see list_profiles for those):",
+            JSON.stringify(trimmed, null, 2),
+          );
+        }
+        return lines.join("\n");
+      }));
 
-      return { content: [{ type: "text", text: lines.join("\n") }] };
+      return { content: [{ type: "text", text: blocks.join("\n\n") }] };
     },
   );
 
@@ -498,8 +589,9 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "create_schedule",
-    "Create a scheduled brew on your Aiden. The Aiden hardware fires the brew at the specified time on the specified days. Time is in DEVICE LOCAL TIME (the timezone configured on the brewer). The schedule is RECURRING — for a one-time 'today at 2pm' brew, set days[] with only today's day enabled, and either delete the schedule after it fires or use toggle_schedule to disable it. Days array indexes: [Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday]. Find the profileId by calling list_profiles first.",
+    "Create a scheduled brew on your Aiden. The Aiden hardware fires the brew at the specified time on the specified days. Time is in DEVICE LOCAL TIME (the timezone configured on the brewer). The schedule is RECURRING — for a one-time 'today at 2pm' brew, set days[] with only today's day enabled, and either delete the schedule after it fires or use toggle_schedule to disable it. Days array indexes: [Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday]. Find the profileId by calling list_profiles for the SAME Aiden first — profile ids differ per brewer. With more than one Aiden on the account, `device` is required. Each Aiden keeps its own local time, so the same HH:MM is a different moment on brewers in different time zones.",
     {
+      device: deviceParam,
       profileId: z
         .string()
         .regex(/^(p|plocal)\d+$/, "profileId must look like 'p7' or 'plocal2'")
@@ -526,11 +618,12 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         .describe("Brew volume in milliliters, 150–1500. A standard cup is ~240mL, full carafe is ~1000mL."),
       enabled: boolish.default(true).describe("Whether the schedule starts active. Default: true."),
     },
-    async ({ profileId, time, days, amountOfWater, enabled }) => {
+    async ({ device, profileId, time, days, amountOfWater, enabled }) => {
       const [hh, mm] = time.split(":").map(Number);
       const secondFromStartOfTheDay = hh * 3600 + mm * 60;
       const client = await getClient();
-      const created = await client.createSchedule({
+      const target = await client.resolveDevice(device);
+      const created = await client.createSchedule(target.id, {
         profileId,
         secondFromStartOfTheDay,
         days,
@@ -544,13 +637,14 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
         ? "\n\n⚠ One-shot caveat: This is a recurring weekly schedule with one day enabled. It will fire again next week on the same day. After it fires today, call delete_schedule or toggle_schedule(enabled=false) to prevent that — or remind the user to do so."
         : "";
       const tzNote =
-        "\n\n⚠ Time zone: " + time + " is in the brewer's local time, set on the Aiden device itself. Verify the device clock matches the user's wall clock before relying on this for time-critical brews.";
+        `\n\n⚠ Time zone: ${time} is in ${deviceLabel(target)}'s local time, set on the Aiden device itself. ` +
+        "Verify the device clock matches the user's wall clock before relying on this for time-critical brews.";
       return {
         content: [
           {
             type: "text",
             text:
-              `Scheduled brew created (id: ${created.id}).\n` +
+              `Scheduled brew created on ${deviceLabel(target)} (id: ${created.id}).\n` +
               `Profile ${profileId} will brew ${amountOfWater}mL at ${time} on ${dayList} (device local time).\n` +
               `${enabled ? "Active" : "Disabled — call toggle_schedule to enable when ready"}.` +
               tzNote +
@@ -566,14 +660,18 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "delete_schedule",
-    "Delete a scheduled brew by its id. Use list_schedules first to find the id.",
+    "Delete a scheduled brew by its id. Use list_schedules first to find the id. With more than one Aiden on the account, `device` is required.",
     {
+      device: deviceParam,
       scheduleId: z.string().min(1).describe("Schedule id from list_schedules"),
     },
-    async ({ scheduleId }) => {
+    async ({ device, scheduleId }) => {
       const client = await getClient();
-      await client.deleteSchedule(scheduleId);
-      return { content: [{ type: "text", text: `Deleted schedule ${scheduleId}.` }] };
+      const target = await client.resolveDevice(device);
+      await client.deleteSchedule(target.id, scheduleId);
+      return {
+        content: [{ type: "text", text: `Deleted schedule ${scheduleId} from ${deviceLabel(target)}.` }],
+      };
     },
   );
 
@@ -582,19 +680,172 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "toggle_schedule",
-    "Enable or disable an existing scheduled brew without deleting it. Useful for pausing a recurring schedule (e.g. weekday morning brew) during vacation.",
+    "Enable or disable an existing scheduled brew without deleting it. Useful for pausing a recurring schedule (e.g. weekday morning brew) during vacation. With more than one Aiden on the account, `device` is required.",
     {
+      device: deviceParam,
       scheduleId: z.string().min(1).describe("Schedule id from list_schedules"),
       enabled: boolish.describe("true to activate the schedule, false to pause it"),
     },
-    async ({ scheduleId, enabled }) => {
+    async ({ device, scheduleId, enabled }) => {
       const client = await getClient();
-      await client.toggleSchedule(scheduleId, enabled);
+      const target = await client.resolveDevice(device);
+      await client.toggleSchedule(target.id, scheduleId, enabled);
       return {
         content: [
-          { type: "text", text: `Schedule ${scheduleId} ${enabled ? "enabled" : "disabled"}.` },
+          {
+            type: "text",
+            text: `Schedule ${scheduleId} on ${deviceLabel(target)} ${enabled ? "enabled" : "disabled"}.`,
+          },
         ],
       };
+    },
+  );
+
+  // ============================================================
+  // sync_profiles — one-way copy of custom profiles between Aidens
+  // ============================================================
+  server.tool(
+    "sync_profiles",
+    "Copy custom brew profiles from one Aiden to another, one way. Profiles are matched by exact title because ids differ per brewer: titles missing on the target are created, titles whose settings differ are overwritten (unless update_existing=false), identical ones are skipped. Never deletes anything — profiles only on the target are left alone and reported. Stock/shared profiles and schedules are not synced. DRY RUN BY DEFAULT: the first call only reports the plan; show it to the user and call again with dry_run=false only after they approve. If the target can't fit every new profile in its 14 slots, nothing is written.",
+    {
+      from: z.string().min(1).describe("Source Aiden: its name from the Fellow app (e.g. 'Canada') or its id"),
+      to: z.string().min(1).describe("Target Aiden: its name from the Fellow app (e.g. 'Italy') or its id"),
+      profiles: z
+        .preprocess(
+          (v) => (typeof v === "string" ? JSON.parse(v) : v),
+          z.array(z.string().min(1)).min(1),
+        )
+        .optional()
+        .describe("Exact, case-sensitive titles to sync. Omit to sync every custom profile on the source."),
+      dry_run: boolish
+        .default(true)
+        .describe("Default true: report what would change without writing anything. Set false to apply."),
+      update_existing: boolish
+        .default(true)
+        .describe("Overwrite target profiles that share a title but have different settings. Default true."),
+    },
+    async ({ from, to, profiles, dry_run, update_existing }) => {
+      const client = await getClient();
+      // Sequential so the second lookup hits the client's device cache.
+      const source = await client.resolveDevice(from);
+      const target = await client.resolveDevice(to);
+      const src = deviceLabel(source);
+      const dst = deviceLabel(target);
+
+      const customOn = async (d: FellowDevice) =>
+        (await client.listProfiles(d.id)).filter((p) => categorize(p) === "custom");
+      const [srcProfiles, dstProfiles] = await Promise.all([customOn(source), customOn(target)]);
+      const byTitle = (ps: FellowProfile[]) => {
+        const m = new Map<string, FellowProfile[]>();
+        for (const p of ps) m.set(p.title, [...(m.get(p.title) ?? []), p]);
+        return m;
+      };
+      const srcByTitle = byTitle(srcProfiles);
+      const dstByTitle = byTitle(dstProfiles);
+
+      const toCreate: FellowProfile[] = [];
+      const toUpdate: Array<{ source: FellowProfile; target: FellowProfile; changes: string[] }> = [];
+      const identical: string[] = [];
+      const skipped: string[] = [];
+      const ids = (ps: FellowProfile[]) => ps.map((p) => p.id).join(", ");
+
+      for (const title of profiles ? [...new Set(profiles)] : [...srcByTitle.keys()]) {
+        const onSrc = srcByTitle.get(title) ?? [];
+        const onDst = dstByTitle.get(title) ?? [];
+        if (!onSrc.length) {
+          skipped.push(`"${title}" — not a custom profile on ${src} (titles are case-sensitive)`);
+        } else if (onSrc.length > 1) {
+          skipped.push(`"${title}" — ${onSrc.length} profiles share this title on ${src} (${ids(onSrc)}); rename one`);
+        } else if (onDst.length > 1) {
+          skipped.push(`"${title}" — ${onDst.length} profiles share this title on ${dst} (${ids(onDst)}); rename or delete one`);
+        } else if (!onDst.length) {
+          toCreate.push(onSrc[0]);
+        } else {
+          const changes = settingsDiff(onSrc[0], onDst[0]);
+          if (!changes.length) identical.push(title);
+          else if (update_existing) toUpdate.push({ source: onSrc[0], target: onDst[0], changes });
+          else skipped.push(`"${title}" — differs on ${dst} but update_existing=false (${changes.join("; ")})`);
+        }
+      }
+      // Only meaningful for a full sync; with a title filter the rest of the
+      // target simply wasn't asked about.
+      const onlyOnTarget = profiles ? [] : [...dstByTitle.keys()].filter((t) => !srcByTitle.has(t));
+      const free = CUSTOM_PROFILE_CAP - dstProfiles.length;
+
+      const lines = [
+        `Sync ${src} → ${dst}${dry_run ? " — DRY RUN, nothing written" : ""}`,
+        `${dst} custom slots: ${dstProfiles.length}/${CUSTOM_PROFILE_CAP} used, ${free} free`,
+      ];
+      const section = (heading: string, items: string[]) => {
+        if (items.length) lines.push("", `${heading} (${items.length}):`, ...items.map((i) => `  ${i}`));
+      };
+      section(`Create on ${dst}`, toCreate.map((p) => p.title));
+      section(
+        `Update on ${dst}`,
+        toUpdate.map((u) => `${u.source.title} (${dst} ${u.target.id}) — ${u.changes.join("; ")}`),
+      );
+      section("Already identical", identical);
+      section("Skipped", skipped);
+      section(`Only on ${dst}, left alone`, onlyOnTarget);
+      const done = (isError = false) => ({ isError, content: [{ type: "text" as const, text: lines.join("\n") }] });
+
+      if (!toCreate.length && !toUpdate.length) {
+        lines.push("", "Nothing to write.");
+        return done();
+      }
+      // All-or-nothing on capacity: a half-synced target is harder to reason
+      // about than one that clearly didn't change.
+      if (toCreate.length > free) {
+        lines.push(
+          "",
+          `✗ ${dst} has ${free} free slot${free === 1 ? "" : "s"} but ${toCreate.length} profiles need creating, so nothing ${dry_run ? "would be" : "was"} written.`,
+          `  Won't fit: ${toCreate.slice(Math.max(free, 0)).map((p) => p.title).join(", ")}`,
+          `  Free slots on ${dst} with delete_profile (ask the user which), or pass a shorter profiles list.`,
+        );
+        return done(!dry_run);
+      }
+      if (dry_run) {
+        lines.push("", "To apply, call sync_profiles again with dry_run=false — only after the user approves this plan.");
+        return done();
+      }
+
+      // Sequential: Fellow assigns the slot id on create, so parallel creates could race.
+      const results: string[] = [];
+      const drifted: string[] = [];
+      let failures = 0;
+      const attempt = async (label: string, write: () => Promise<FellowProfile>, sent: Omit<FellowProfile, "id">) => {
+        try {
+          const saved = await write();
+          const drift = diffProfileEcho(
+            sent as unknown as Record<string, unknown>,
+            saved as unknown as Record<string, unknown>,
+          );
+          if (drift.length) drifted.push(`${label}: ${drift.join("; ")}`);
+          results.push(`✓ ${label} (${dst} ${saved.id})`);
+        } catch (err) {
+          failures++;
+          results.push(`✗ ${label}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      };
+      for (const p of toCreate) {
+        const sent = writableProfile(p);
+        await attempt(`created "${p.title}"`, () => client.createProfile(target.id, sent), sent);
+      }
+      for (const u of toUpdate) {
+        const sent = writableProfile(u.source);
+        await attempt(`updated "${u.source.title}"`, () => client.updateProfile(target.id, u.target.id!, sent), sent);
+      }
+
+      lines.push("", `Results (${results.length - failures} ok, ${failures} failed):`, ...results.map((r) => `  ${r}`));
+      if (drifted.length) {
+        lines.push(
+          "",
+          `⚠ IMPORTANT — Fellow saved different values than were sent (possible API change). ` +
+            `Tell the user to verify these on ${dst} in the Fellow app before brewing:`,
+          ...drifted.map((d) => `  - ${d}`),
+        );
+      }
+      return done(failures === results.length);
     },
   );
 
@@ -603,25 +854,13 @@ function makeServer(headers: Headers, env: Env, seed: FellowClient | null = null
   // ============================================================
   server.tool(
     "get_device_info",
-    "Get info about your connected Aiden brewer (name, profile count, slot usage). Lightweight call useful for verifying credentials work before doing heavier operations.",
-    {},
-    async () => {
+    "Get info about your Aiden brewer (name, id, profile count, slot usage). Lightweight call useful for verifying credentials work before doing heavier operations. Shows every Aiden unless `device` is given.",
+    { device: readDeviceParam },
+    async ({ device }) => {
       const client = await getClient();
-      const device = await client.getDevice();
-      const profiles = await client.listProfiles();
-      const customCount = profiles.filter((p) => categorize(p) === "custom").length;
-      return {
-        content: [
-          {
-            type: "text",
-            text:
-              `Device: ${device.displayName ?? "Aiden"}\n` +
-              `ID: ${device.id}\n` +
-              `Custom profile slots: ${customCount}/${CUSTOM_PROFILE_CAP}\n` +
-              `Total profiles visible (incl. stock + shared): ${profiles.length}`,
-          },
-        ],
-      };
+      const devices = await devicesFor(client, device);
+      const blocks = await Promise.all(devices.map((d) => deviceSummary(client, d)));
+      return { content: [{ type: "text", text: blocks.join("\n\n") }] };
     },
   );
 
@@ -734,6 +973,8 @@ export default {
           "delete_profile",
           "share_profile",
           "get_device_info",
+          "list_devices",
+          "sync_profiles",
           "list_schedules",
           "create_schedule",
           "delete_schedule",

@@ -33,18 +33,42 @@ This fork is optimized for:
 |---|---|---|
 | `brewing_guidelines` | none | **Personalized brewing profiles** optimized for milk-forward batch brewing. Returns principles and starting recipe with Fellow Ode Gen 2 grind settings (8.0-8.2 batch, 5.0-5.3 cone), dynamic ratio (1:14-1:16), and moderate temps (94-96°C) |
 | `flash_brew` | none | Plan Japanese iced coffee with automatic ice/water split calculation. Uses Ode 5.0 grind setting optimized for flash brewing |
-| `list_profiles` | OAuth | List brew profiles on your Aiden |
-| `create_profile` | OAuth | Push new profile to Aiden, get `brew.link` URL |
+| `list_devices` | OAuth | List every Aiden on the account (name, id, slot usage) |
+| `list_profiles` | OAuth | List brew profiles (all Aidens, or one with `device`) |
+| `create_profile` | OAuth | Push new profile to an Aiden, get `brew.link` URL |
 | `update_profile` | OAuth | Edit existing profile |
-| `delete_profile` | OAuth | Free up profile slot (14-profile cap) |
+| `delete_profile` | OAuth | Free up profile slot (14-profile cap, per Aiden) |
 | `share_profile` | OAuth | Generate `brew.link` for profile |
-| `list_schedules` | OAuth | List scheduled brews |
+| `sync_profiles` | OAuth | One-way copy of custom profiles between Aidens (dry run by default) |
+| `list_schedules` | OAuth | List scheduled brews (all Aidens, or one with `device`) |
 | `create_schedule` | OAuth | Schedule recurring brew |
 | `delete_schedule` | OAuth | Remove scheduled brew |
 | `toggle_schedule` | OAuth | Pause/resume schedule |
 | `get_device_info` | OAuth | Verify connection + slot usage |
 
 **Note:** This personalized version focuses on brewing profiles from coffee photos/descriptions you provide to Claude, rather than URL scraping. The `fetch_coffee_details` tool has been removed to streamline the workflow.
+
+## Multiple Aidens
+
+One Fellow account can own several Aidens (e.g. one in Canada, one in Italy). Name them in the Fellow app so they're easy to target — the tools match names case-insensitively, or take the device id from `list_devices`.
+
+- **Reading** (`list_profiles`, `list_schedules`, `get_device_info`): omit `device` to see every Aiden.
+- **Changing** (create/update/delete/share profiles, create/delete/toggle schedules): `device` is **required** when the account has more than one Aiden — the call errors and lists the names rather than guessing. With a single Aiden it's optional, as before.
+- **Profile ids are per-Aiden.** The same recipe is `p3` on one brewer and `p7` on the other, so use `list_profiles` for the same device before scheduling.
+- **Schedules use each Aiden's own local time.**
+
+### Syncing profiles
+
+```javascript
+sync_profiles({ from: "Canada", to: "Italy" })                    // dry run: shows the plan
+sync_profiles({ from: "Canada", to: "Italy", dry_run: false })    // apply it
+sync_profiles({ from: "Canada", to: "Italy", profiles: ["House Batch"], dry_run: false })
+```
+
+- One-way and on demand. Custom profiles are matched by **exact title**: missing ones are created, ones with different settings are overwritten (`update_existing: false` to skip those), identical ones are left alone.
+- **Never deletes.** Profiles only on the target are reported and kept.
+- If the target can't fit every new profile in its 14 slots, **nothing** is written.
+- Titles duplicated on either Aiden are skipped as ambiguous. Stock/shared profiles and schedules are not synced.
 
 ## Brewing Philosophy
 
@@ -182,7 +206,7 @@ These protections defend against:
 - **One basket priority:** Batch basket is default, cone is experimental
 - **Dynamic ratio:** 1:14-1:16 (default 1:15) adjusts based on coffee density and process
 - **Fellow's API is private:** Could break without notice
-- **14-profile cap:** Aiden hardware limitation
+- **14-profile cap:** Aiden hardware limitation (per Aiden)
 
 ## License
 

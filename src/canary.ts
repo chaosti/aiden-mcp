@@ -89,21 +89,22 @@ export async function runCanary(env: Env): Promise<void> {
   }
 
   // ---- devices ----
-  let haveDevice = false;
+  // The canary account owns a single Aiden, so resolveDevice() needs no selector.
+  let deviceId: string | null = null;
   try {
-    const device = await client.getDevice();
+    const device = await client.resolveDevice();
     const parsed = deviceSchema.safeParse(device);
     if (!parsed.success) findings.push(...zodIssues("devices", parsed.error));
-    else haveDevice = true;
+    else deviceId = device.id;
   } catch (err) {
     findings.push(`devices: ${errMsg(err)}`);
   }
 
   // ---- profiles (read) ----
   let customCount = 0;
-  if (haveDevice) {
+  if (deviceId) {
     try {
-      const profiles = await client.listProfiles();
+      const profiles = await client.listProfiles(deviceId);
       if (!Array.isArray(profiles) || profiles.length === 0) {
         findings.push("profiles: expected a non-empty array (stock profiles should always exist)");
       } else {
@@ -126,7 +127,7 @@ export async function runCanary(env: Env): Promise<void> {
 
     // ---- schedules (read) ----
     try {
-      const schedules = await client.listSchedules();
+      const schedules = await client.listSchedules(deviceId);
       if (!Array.isArray(schedules)) {
         findings.push("schedules: expected an array");
       } else {
@@ -144,7 +145,7 @@ export async function runCanary(env: Env): Promise<void> {
       if (customCount >= 14) {
         console.log("canary: write check skipped (account at profile cap)");
       } else {
-        await checkWritePath(client, findings);
+        await checkWritePath(client, deviceId, findings);
       }
     }
   }
@@ -214,10 +215,14 @@ async function checkStoredValues(env: Env, custom: FellowProfile[]): Promise<str
   );
 }
 
-async function checkWritePath(client: FellowClient, findings: string[]): Promise<void> {
+async function checkWritePath(
+  client: FellowClient,
+  deviceId: string,
+  findings: string[],
+): Promise<void> {
   let createdId: string | undefined;
   try {
-    const created = await client.createProfile(CANARY_PROFILE);
+    const created = await client.createProfile(deviceId, CANARY_PROFILE);
     createdId = created.id;
     const drift = diffProfileEcho(
       CANARY_PROFILE as unknown as Record<string, unknown>,
@@ -231,7 +236,7 @@ async function checkWritePath(client: FellowClient, findings: string[]): Promise
     // Exercise update too — a broken PATCH route shipped unnoticed for weeks
     // because the original write check only covered create and delete.
     try {
-      const updated = await client.updateProfile(createdId, {
+      const updated = await client.updateProfile(deviceId, createdId, {
         ...CANARY_PROFILE,
         bloomTemperature: 92.5,
       });
@@ -244,7 +249,7 @@ async function checkWritePath(client: FellowClient, findings: string[]): Promise
       findings.push(`update: ${errMsg(err)}`);
     }
     try {
-      await client.deleteProfile(createdId);
+      await client.deleteProfile(deviceId, createdId);
     } catch (err) {
       findings.push(`delete: ${errMsg(err)} — canary profile "${CANARY_PROFILE.title}" (${createdId}) left behind, remove manually`);
     }
